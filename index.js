@@ -22,7 +22,7 @@ const authLimiter = rateLimit({
 
 // Middleware
 app.use(cors({ 
-  origin: ['http://localhost:5173', 'http://172.20.10.2:8081', 'exp://172.20.10.2:8081'], 
+  origin: ['http://localhost:5173', 'http://192.168.8.159:8081', 'exp://192.168.8.159:8081'], 
   credentials: true 
 }));
 app.use(express.json());
@@ -809,9 +809,10 @@ const startServer = async () => {
     await connectDB();
     
     const PORT = process.env.PORT || 3001;
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       console.log(`🔐 Auth service running on port ${PORT}`);
       console.log(`🌐 Health check: http://localhost:${PORT}/health`);
+      console.log(`🌐 Mobile access: http://192.168.8.159:${PORT}/health`);
     });
   } catch (error) {
     console.error('Failed to start server:', error);
