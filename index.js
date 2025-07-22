@@ -22,7 +22,13 @@ const authLimiter = rateLimit({
 
 // Middleware
 app.use(cors({ 
-  origin: ['http://localhost:5173', 'http://192.168.8.159:8081', 'exp://192.168.8.159:8081'], 
+  origin: [
+    'http://localhost:5173', 
+    'http://192.168.8.159:8081', 
+    'exp://192.168.8.159:8081',
+    'http://192.168.8.142:8081',
+    'exp://192.168.8.142:8081'
+  ], 
   credentials: true 
 }));
 app.use(express.json());
