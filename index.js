@@ -67,6 +67,11 @@ const userSchema = new mongoose.Schema({
     enum: ['tourist', 'traveller', 'transport', 'accommodation', 'guide'],
     default: 'tourist'
   },
+  status: {
+    type: String,
+    enum: ['active', 'pending', 'suspended', 'rejected'],
+    default: 'active' // Default for regular users, guides will be 'pending'
+  },
   platform: {
     type: String,
     enum: ['web', 'mobile'],
@@ -83,6 +88,23 @@ const userSchema = new mongoose.Schema({
   avatar: {
     type: String,
     default: null
+  },
+  // Guide-specific details
+  guideDetails: {
+    firstName: String,
+    lastName: String,
+    nicNumber: String,
+    dateOfBirth: String,
+    proofDocument: String, // Will store file path or URL
+    approvedAt: {
+      type: Date,
+      default: null
+    },
+    approvedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    }
   },
   refreshTokens: [{
     token: String,
@@ -371,6 +393,9 @@ app.post('/api/auth/signup', authLimiter, validateSignup, async (req, res) => {
     // Hash password
     const hashedPassword = await hashPassword(password);
 
+    // Determine initial status based on role
+    const initialStatus = mappedRole === 'guide' ? 'pending' : 'active';
+
     // Create new user
     const newUser = new User({
       username,
@@ -378,47 +403,70 @@ app.post('/api/auth/signup', authLimiter, validateSignup, async (req, res) => {
       password: hashedPassword,
       role: mappedRole,
       platform: 'mobile',
+      status: initialStatus, // Guides start as pending, travelers as active
       isActive: true,
       emailVerified: false
     });
 
     await newUser.save();
-    console.log('Mobile user created successfully:', username);
+    console.log('Mobile user created successfully:', username, 'with status:', initialStatus);
 
-    // Generate tokens
-    const { accessToken, refreshToken } = generateTokens(newUser, 'mobile');
+    // Only generate tokens for active users (not pending guides)
+    if (initialStatus === 'active') {
+      // Generate tokens
+      const { accessToken, refreshToken } = generateTokens(newUser, 'mobile');
 
-    // Store refresh token in database
-    const refreshTokenExpiry = new Date();
-    refreshTokenExpiry.setDate(refreshTokenExpiry.getDate() + 7); // 7 days
+      // Store refresh token in database
+      const refreshTokenExpiry = new Date();
+      refreshTokenExpiry.setDate(refreshTokenExpiry.getDate() + 7); // 7 days
 
-    newUser.refreshTokens.push({
-      token: refreshToken,
-      expiresAt: refreshTokenExpiry
-    });
-    await newUser.save();
+      newUser.refreshTokens.push({
+        token: refreshToken,
+        expiresAt: refreshTokenExpiry
+      });
+      await newUser.save();
 
-    res.status(201).json({
-      success: true,
-      message: 'User registered successfully',
-      data: {
-        user: {
-          id: newUser._id.toString(),
-          username: newUser.username,
-          email: newUser.email,
-          role: mappedRole,
-          avatar: newUser.avatar,
-          isActive: newUser.isActive,
-          emailVerified: newUser.emailVerified,
-          createdAt: newUser.createdAt,
-          updatedAt: newUser.updatedAt
-        },
-        accessToken,
-        refreshToken
-      }
-    });
-
-  } catch (err) {
+      res.status(201).json({
+        success: true,
+        message: 'User registered successfully',
+        data: {
+          user: {
+            id: newUser._id.toString(),
+            username: newUser.username,
+            email: newUser.email,
+            role: mappedRole,
+            status: newUser.status,
+            avatar: newUser.avatar,
+            isActive: newUser.isActive,
+            emailVerified: newUser.emailVerified,
+            createdAt: newUser.createdAt,
+            updatedAt: newUser.updatedAt
+          },
+          accessToken,
+          refreshToken
+        }
+      });
+    } else {
+      // For pending guides, don't provide tokens
+      res.status(201).json({
+        success: true,
+        message: 'Guide registration submitted successfully. Your application will be reviewed by admin.',
+        data: {
+          user: {
+            id: newUser._id.toString(),
+            username: newUser.username,
+            email: newUser.email,
+            role: mappedRole,
+            status: newUser.status,
+            avatar: newUser.avatar,
+            isActive: newUser.isActive,
+            emailVerified: newUser.emailVerified,
+            createdAt: newUser.createdAt,
+            updatedAt: newUser.updatedAt
+          }
+        }
+      });
+    }  } catch (err) {
     console.error('Mobile registration error:', err);
     res.status(500).json({ 
       success: false,
@@ -473,6 +521,35 @@ app.post('/api/auth/login', authLimiter, validateLogin, async (req, res) => {
       });
     }
 
+    // Check if guide account is pending approval
+    if (user.role === 'guide' && user.status === 'pending') {
+      console.log('Guide account pending approval:', identifier);
+      return res.status(403).json({ 
+        success: false,
+        message: 'Account pending approval',
+        error: 'Your guide account is still under review. Please wait for admin approval.'
+      });
+    }
+
+    // Check if account is suspended or rejected
+    if (user.status === 'suspended') {
+      console.log('Account suspended:', identifier);
+      return res.status(403).json({ 
+        success: false,
+        message: 'Account suspended',
+        error: 'Your account has been suspended. Please contact support.'
+      });
+    }
+
+    if (user.status === 'rejected') {
+      console.log('Account rejected:', identifier);
+      return res.status(403).json({ 
+        success: false,
+        message: 'Account rejected',
+        error: 'Your guide application has been rejected. Please contact support for more information.'
+      });
+    }
+
     // Generate tokens
     const { accessToken, refreshToken } = generateTokens(user, 'mobile');
 
@@ -497,6 +574,7 @@ app.post('/api/auth/login', authLimiter, validateLogin, async (req, res) => {
           username: user.username,
           email: user.email,
           role: user.role,
+          status: user.status,
           avatar: user.avatar,
           isActive: user.isActive,
           emailVerified: user.emailVerified,
@@ -653,6 +731,109 @@ app.post('/api/auth/refresh', async (req, res) => {
   }
 });
 
+// Guide registration endpoint for mobile app
+app.post('/api/auth/guide-registration', authLimiter, async (req, res) => {
+  try {
+    console.log('📝 Guide registration request received');
+    console.log('📝 Request body fields:', Object.keys(req.body));
+    
+    const {
+      username,
+      email,
+      password,
+      role,
+      firstName,
+      lastName,
+      nicNumber,
+      dateOfBirth
+    } = req.body;
+
+    // Validate required fields
+    if (!username || !email || !password || !firstName || !lastName || !nicNumber || !dateOfBirth) {
+      return res.status(400).json({
+        success: false,
+        message: 'All fields are required'
+      });
+    }
+
+    // Validate role
+    if (role !== 'guide') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid role for guide registration'
+      });
+    }
+
+    // Check if user already exists
+    const existingUser = await User.findOne({
+      $or: [{ email }, { username }]
+    });
+
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'User with this email or username already exists'
+      });
+    }
+
+    // Hash password
+    const saltRounds = 12;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+    // Create new guide user (with pending approval)
+    const newGuide = new User({
+      username,
+      email,
+      password: hashedPassword,
+      role: 'guide',
+      platform: 'mobile', // Set platform for mobile app users
+      status: 'pending', // Guides need admin approval
+      guideDetails: {
+        firstName,
+        lastName,
+        nicNumber,
+        dateOfBirth,
+        // proofDocument will be handled separately if needed
+      },
+      createdAt: new Date()
+    });
+
+    await newGuide.save();
+
+    console.log('✅ Guide registration successful for:', username);
+
+    res.status(201).json({
+      success: true,
+      message: 'Guide registration submitted successfully. Your application will be reviewed by admin.',
+      data: {
+        user: {
+          id: newGuide._id,
+          username: newGuide.username,
+          email: newGuide.email,
+          role: newGuide.role,
+          status: newGuide.status
+        }
+      }
+    });
+
+  } catch (err) {
+    console.error('❌ Guide registration error:', err);
+    
+    if (err.code === 11000) {
+      // Duplicate key error
+      return res.status(400).json({
+        success: false,
+        message: 'User with this email or username already exists'
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Guide registration failed. Please try again.'
+    });
+  }
+});
+
 // Middleware to verify JWT token
 const verifyToken = (req, res, next) => {
   const token = req.header('Authorization')?.replace('Bearer ', '');
@@ -720,6 +901,7 @@ app.get('/api/auth/profile', verifyMobileToken, async (req, res) => {
           username: user.username,
           email: user.email,
           role: user.role,
+          status: user.status,
           avatar: user.avatar,
           isActive: user.isActive,
           emailVerified: user.emailVerified,
