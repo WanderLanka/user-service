@@ -22,10 +22,53 @@ const authLimiter = rateLimit({
 
 // Middleware
 app.use(cors({ 
-  origin: ['http://localhost:5173', 'http://192.168.8.159:8081', 'exp://192.168.8.159:8081'], 
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // In development, allow any origin that contains localhost or is an IP
+    if (process.env.NODE_ENV !== 'production') {
+      const isLocalhost = origin.includes('localhost');
+      const isIP = /^https?:\/\/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(origin);
+      const isExpo = origin.startsWith('exp://');
+      
+      if (isLocalhost || isIP || isExpo) {
+        return callback(null, true);
+      }
+    }
+    
+    // Production whitelist (add your production domains here)
+    const allowedOrigins = [
+      'https://your-production-domain.com',
+      'https://wanderlanka.com',
+      // Add more production domains as needed
+    ];
+    
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    
+    callback(new Error('Not allowed by CORS'));
+  },
   credentials: true 
 }));
 app.use(express.json());
+
+// Add timeout middleware
+app.use((req, res, next) => {
+  // Set timeout to 30 seconds for all requests
+  res.setTimeout(30000, () => {
+    console.log('Request timeout for:', req.method, req.path);
+    if (!res.headersSent) {
+      res.status(408).json({ 
+        success: false, 
+        message: 'Request timeout',
+        error: 'Server took too long to respond'
+      });
+    }
+  });
+  next();
+});
 
 // Add request logging
 app.use((req, res, next) => {
@@ -184,6 +227,15 @@ app.get('/health', (req, res) => {
     services: {
       database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
     }
+  });
+});
+
+// Quick connectivity test endpoint
+app.get('/api/ping', (req, res) => {
+  res.status(200).json({ 
+    success: true,
+    message: 'pong',
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -696,14 +748,23 @@ const verifyMobileToken = (req, res, next) => {
 // Mobile App Profile endpoint
 app.get('/api/auth/profile', verifyMobileToken, async (req, res) => {
   try {
-    const user = await User.findById(req.user.userId).select('-password -refreshTokens');
+    console.log(`📱 Profile request for user: ${req.user.userId}`);
+    
+    const user = await User.findById(req.user.userId)
+      .select('-password -refreshTokens')
+      .lean() // Use lean() for faster queries
+      .maxTimeMS(5000); // Set max execution time to 5 seconds
+    
     if (!user) {
+      console.log(`❌ User not found: ${req.user.userId}`);
       return res.status(404).json({ 
         success: false,
         message: 'User not found',
         error: 'Profile not found'
       });
     }
+
+    console.log(`✅ Profile retrieved successfully for: ${user.username}`);
 
     res.status(200).json({
       success: true,
@@ -723,7 +784,7 @@ app.get('/api/auth/profile', verifyMobileToken, async (req, res) => {
       }
     });
   } catch (err) {
-    console.error('Mobile profile error:', err);
+    console.error('❌ Mobile profile error:', err);
     res.status(500).json({ 
       success: false,
       message: 'Internal server error',
@@ -812,7 +873,7 @@ const startServer = async () => {
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`🔐 Auth service running on port ${PORT}`);
       console.log(`🌐 Health check: http://localhost:${PORT}/health`);
-      console.log(`🌐 Mobile access: http://192.168.8.159:${PORT}/health`);
+      console.log(`🌐 Mobile access: http://172.20.10.2:${PORT}/health`);
     });
   } catch (error) {
     console.error('Failed to start server:', error);
