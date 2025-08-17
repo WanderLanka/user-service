@@ -22,41 +22,43 @@ const authLimiter = rateLimit({
 
 // Middleware
 app.use(cors({ 
-  origin: [
-    'http://localhost:5173', 
-    'http://192.168.8.159:8081', 
-    'exp://192.168.8.159:8081',
-    'http://192.168.8.142:8081',
-    'exp://192.168.8.142:8081'
-  ], 
-  // origin: function (origin, callback) {
-  //   // Allow requests with no origin (like mobile apps or curl requests)
-  //   if (!origin) return callback(null, true);
+  // origin: [
+  //   'http://localhost:5173', 
+  //   'http://192.168.8.159:8081', 
+  //   'exp://192.168.8.159:8081',
+  //   'http://192.168.8.142:8081',
+  //   'exp://192.168.8.142:8081',
+  //   'http://172.20.10.2:8081',
+  //   'exp://172.20.10.2:8081'
+  // ], 
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
     
-  //   // In development, allow any origin that contains localhost or is an IP
-  //   if (process.env.NODE_ENV !== 'production') {
-  //     const isLocalhost = origin.includes('localhost');
-  //     const isIP = /^https?:\/\/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(origin);
-  //     const isExpo = origin.startsWith('exp://');
+    // In development, allow any origin that contains localhost or is an IP
+    if (process.env.NODE_ENV !== 'production') {
+      const isLocalhost = origin.includes('localhost');
+      const isIP = /^https?:\/\/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(origin);
+      const isExpo = origin.startsWith('exp://');
       
-  //     if (isLocalhost || isIP || isExpo) {
-  //       return callback(null, true);
-  //     }
-  //   }
+      if (isLocalhost || isIP || isExpo) {
+        return callback(null, true);
+      }
+    }
     
-  //   // Production whitelist (add your production domains here)
-  //   const allowedOrigins = [
-  //     'https://your-production-domain.com',
-  //     'https://wanderlanka.com',
-  //     // Add more production domains as needed
-  //   ];
+    // Production whitelist (add your production domains here)
+    const allowedOrigins = [
+      'https://your-production-domain.com',
+      'https://wanderlanka.com',
+      // Add more production domains as needed
+    ];
     
-  //   if (allowedOrigins.includes(origin)) {
-  //     return callback(null, true);
-  //   }
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
     
-  //   callback(new Error('Not allowed by CORS'));
-  // },
+    callback(new Error('Not allowed by CORS'));
+  },
   credentials: true 
 }));
 app.use(express.json());
@@ -176,7 +178,11 @@ const User = mongoose.model('User', userSchema);
 // Database connection with better error handling
 const connectDB = async () => {
   try {
-    const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/wanderlanka';
+    // Use local MongoDB for development if Atlas connection fails
+    const mongoUri = process.env.NODE_ENV === 'development' 
+      ? 'mongodb://localhost:27017/wanderlanka'
+      : process.env.MONGO_URI || 'mongodb://localhost:27017/wanderlanka';
+    
     console.log('Connecting to MongoDB:', mongoUri.replace(/mongodb\+srv:\/\/[^:]+:[^@]+@/, 'mongodb+srv://****:****@'));
     
     await mongoose.connect(mongoUri);
@@ -184,6 +190,19 @@ const connectDB = async () => {
     console.log('✅ MongoDB connected successfully');
   } catch (error) {
     console.error('❌ MongoDB connection error:', error.message);
+    
+    // Try local fallback if Atlas fails
+    if (process.env.MONGO_URI && process.env.MONGO_URI.includes('mongodb+srv')) {
+      console.log('🔄 Trying local MongoDB fallback...');
+      try {
+        await mongoose.connect('mongodb://localhost:27017/wanderlanka');
+        console.log('✅ Connected to local MongoDB successfully');
+        return;
+      } catch (localError) {
+        console.error('❌ Local MongoDB connection failed:', localError.message);
+      }
+    }
+    
     process.exit(1);
   }
 };
