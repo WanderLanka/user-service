@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const config = require('./config');
 const { logger } = require('./utils');
+const authRoutes = require('./routes/authRoutes');
 
 const app = express();
 
@@ -17,10 +18,10 @@ app.use(express.json());
 app.use((req, res, next) => {
   logger.request(req);
   next();
+  // res.status(200).json({ message: 'Intercepted for debugging' }); // DEBUGGING
 });
 
-// Routes
-const authRoutes = require('./routes/authRoutes');
+// Routes Handling
 app.use('/', authRoutes);
 
 // Global error handler
