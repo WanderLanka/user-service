@@ -1,28 +1,53 @@
 const UserService = require('./userService');
 const TokenService = require('./tokenService');
 const { validationResult } = require('express-validator');
+const { platformHelper, logger } = require('../utils');
 
 class AuthService {
-  static async register(userData, platform = 'web') {
+    
+  static validateRequest(req) {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      const errorMessages = errors.array().map(error => error.msg);
+      throw new Error(errorMessages.join(', '));
+    }
+  }
+
+  static async register(req) {
+    // Validate request
+    this.validateRequest(req);
+
+    // Detect platform
+    const platform = platformHelper.detectPlatform(req);
+    
+    // Log attempt
+    logger.auth('Registration', platform, req.body.username);
+
     // Check if user already exists
-    const existingUser = await UserService.findByUsernameOrEmail(userData.username, userData.email);
+    const existingUser = await UserService.findByUsernameOrEmail(req.body.username, req.body.email);
     if (existingUser) {
-      throw new Error(existingUser.username === userData.username ? 'Username already exists' : 'Email already exists');
+      const error = new Error(existingUser.username === req.body.username ? 'Username already exists' : 'Email already exists');
+      error.statusCode = 409;
+      throw error;
     }
 
     // Determine role and status based on platform and role
-    let role = userData.role;
+    let role = req.body.role;
     let status = 'active';
 
     if (platform === 'web') {
-      const validWebRoles = ['transport', 'accommodation'];
+      const validWebRoles = ['tourist', 'guide', 'transport', 'accommodation'];
       if (!validWebRoles.includes(role)) {
-        throw new Error('Invalid role for web application');
+        const error = new Error('Invalid role for web application');
+        error.statusCode = 400;
+        throw error;
       }
     } else if (platform === 'mobile') {
       const validMobileRoles = ['tourist', 'guide'];
       if (!validMobileRoles.includes(role)) {
-        throw new Error('Role must be either tourist or guide');
+        const error = new Error('Role must be either tourist or guide');
+        error.statusCode = 400;
+        throw error;
       }
       // Map tourist to traveller for mobile app
       if (role === 'tourist') role = 'traveller';
@@ -32,77 +57,132 @@ class AuthService {
 
     // Create user
     const newUser = await UserService.createUser({
-      username: userData.username,
-      email: userData.email,
-      password: userData.password,
+      username: req.body.username,
+      email: req.body.email,
+      password: req.body.password,
       role,
       platform,
       status,
       isActive: true,
       emailVerified: false,
-      guideDetails: userData.guideDetails || null
+      guideDetails: req.body.guideDetails || null
     });
 
-    // Generate tokens only for active users
-    if (status === 'active') {
-      const tokens = TokenService.generateTokens(newUser, platform);
-      await UserService.addRefreshToken(newUser._id, tokens.refreshToken);
-      return UserService.formatUserResponse(newUser, true, tokens);
-    }
+    // Log success
+    logger.authSuccess('Registration', platform, req.body.username);
 
-    return UserService.formatUserResponse(newUser, false);
+    // Registration only returns user data, no tokens
+    // Users must login separately to get tokens
+    const userData = UserService.formatUserResponse(newUser, false);
+    
+    // Return structured response based on user role and status
+    const message = (newUser.role === 'guide' && newUser.status === 'pending') 
+      ? 'Guide registration submitted successfully. Your application will be reviewed by admin.' 
+      : 'User registered successfully. Please login to access your account.';
+    
+    return {
+      data: userData,
+      message,
+      statusCode: 201
+    };
   }
 
-  static async login(identifier, password, platform = 'web') {
+  static async login(req) {
+    // Validate request
+    this.validateRequest(req);
+
+    // Detect platform
+    const platform = platformHelper.detectPlatform(req);
+    
+    // Handle both identifier (mobile) and username (web) formats
+    const identifier = req.body.identifier || req.body.username;
+    
+    // Log attempt
+    logger.auth('Login', platform, identifier);
+
     // Find user
     const user = await UserService.findByCredentials(identifier);
     if (!user) {
-      throw new Error('Invalid credentials');
+      const error = new Error('Invalid credentials');
+      error.statusCode = 401;
+      throw error;
     }
 
     // Platform-specific role validation
-    if (platform === 'web' && !['transport', 'accommodation'].includes(user.role)) {
-      throw new Error('Invalid credentials');
+    if (platform === 'web' && !['tourist', 'transport', 'accommodation', 'Sysadmin'].includes(user.role)) {
+      const error = new Error('Invalid credentials');
+      error.statusCode = 401;
+      throw error;
     } else if (platform === 'mobile' && !['traveller', 'guide'].includes(user.role)) {
-      throw new Error('Invalid credentials');
+      const error = new Error('Invalid credentials');
+      error.statusCode = 401;
+      throw error;
     }
 
     // Verify password
-    const isPasswordValid = await TokenService.comparePassword(password, user.password);
+    const isPasswordValid = await TokenService.comparePassword(req.body.password, user.password);
     if (!isPasswordValid) {
-      throw new Error('Invalid credentials');
+      const error = new Error('Invalid credentials');
+      error.statusCode = 401;
+      throw error;
     }
 
     // Check account status
     if (user.role === 'guide' && user.status === 'pending') {
-      throw new Error('Your guide account is still under review. Please wait for admin approval.');
+      const error = new Error('Your guide account is still under review. Please wait for admin approval.');
+      error.statusCode = 403;
+      throw error;
     }
 
     if (user.status === 'suspended') {
-      throw new Error('Your account has been suspended. Please contact support.');
+      const error = new Error('Your account has been suspended. Please contact support.');
+      error.statusCode = 403;
+      throw error;
     }
 
     if (user.status === 'rejected') {
-      throw new Error('Your guide application has been rejected. Please contact support for more information.');
+      const error = new Error('Your guide application has been rejected. Please contact support for more information.');
+      error.statusCode = 403;
+      throw error;
     }
 
     // Generate tokens
     const tokens = TokenService.generateTokens(user, platform);
     await UserService.addRefreshToken(user._id, tokens.refreshToken);
 
-    return UserService.formatUserResponse(user, true, tokens);
+    // Log success
+    logger.authSuccess('Login', platform, identifier);
+
+    const userData = UserService.formatUserResponse(user, true, tokens);
+    
+    return {
+      data: userData,
+      message: 'Login successful',
+      statusCode: 200
+    };
   }
 
-  static async logout(refreshToken) {
+  static async logout(req) {
+    const refreshToken = req.body.refreshToken;
+    
     if (refreshToken) {
       await UserService.removeRefreshToken(refreshToken);
     }
-    return { message: 'Logged out successfully' };
+    
+    return {
+      data: {},
+      message: 'Logged out successfully',
+      statusCode: 200
+    };
   }
 
-  static async refreshToken(refreshToken) {
+  static async refreshToken(req) {
+    const refreshToken = req.body.refreshToken;
+    
     if (!refreshToken) {
-      throw new Error('No refresh token provided');
+      const error = new Error('No refresh token provided');
+      error.statusCode = 400;
+      throw error;
     }
 
     // Verify refresh token
@@ -110,51 +190,77 @@ class AuthService {
     try {
       decoded = TokenService.verifyToken(refreshToken);
     } catch (err) {
-      throw new Error('Token verification failed');
+      const error = new Error('Token verification failed');
+      error.statusCode = 401;
+      throw error;
     }
 
     // Find user and validate refresh token
     const user = await UserService.findValidRefreshToken(decoded.userId, refreshToken);
     if (!user) {
-      throw new Error('Invalid refresh token');
+      const error = new Error('Invalid refresh token');
+      error.statusCode = 401;
+      throw error;
     }
 
     // Generate new tokens
     const tokens = TokenService.generateTokens(user, decoded.platform);
-
-    // Replace old refresh token with new one
-    await UserService.removeRefreshToken(refreshToken);
     await UserService.addRefreshToken(user._id, tokens.refreshToken);
+    await UserService.removeRefreshToken(refreshToken);
 
-    return UserService.formatUserResponse(user, true, tokens);
+    const userData = UserService.formatUserResponse(user, true, tokens);
+    
+    return {
+      data: userData,
+      message: 'Token refreshed successfully',
+      statusCode: 200
+    };
   }
-
-  static async getProfile(userId) {
+  static async getProfile(req) {
+    const userId = req.user.userId;
+    
     const user = await UserService.getUserProfile(userId);
     if (!user) {
-      throw new Error('Profile not found');
+      const error = new Error('Profile not found');
+      error.statusCode = 404;
+      throw error;
     }
-    return UserService.formatUserResponse(user);
+    
+    const userData = UserService.formatUserResponse(user);
+    
+    return {
+      data: { user: userData },
+      message: 'Profile retrieved successfully',
+      statusCode: 200
+    };
   }
 
-  static async cleanupExpiredTokens() {
+  static async verifyToken(req) {
+    const userData = {
+      valid: true,
+      user: {
+        userId: req.user.userId,
+        username: req.user.username,
+        role: req.user.role,
+        platform: req.user.platform
+      }
+    };
+    
+    return {
+      data: userData,
+      message: 'Token is valid',
+      statusCode: 200
+    };
+  }
+
+  static async cleanupExpiredTokens(req) {
     const result = await UserService.cleanupExpiredTokens();
-    return { modifiedCount: result.modifiedCount };
-  }
-
-  static validateRequest(req) {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      throw new Error(errors.array()[0].msg);
-    }
-  }
-
-  static detectPlatform(userAgent) {
-    // Simple platform detection based on User-Agent
-    if (userAgent && userAgent.includes('Expo')) {
-      return 'mobile';
-    }
-    return 'web';
+    
+    return {
+      data: { modifiedCount: result.modifiedCount },
+      message: 'Token cleanup completed',
+      statusCode: 200
+    };
   }
 }
 
