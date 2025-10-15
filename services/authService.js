@@ -4,10 +4,62 @@ const { validationResult } = require('express-validator');
 
 class AuthService {
   static async register(userData, platform = 'web') {
-    // Check if user already exists
-    const existingUser = await UserService.findByUsernameOrEmail(userData.username, userData.email);
-    if (existingUser) {
-      throw new Error(existingUser.username === userData.username ? 'Username already exists' : 'Email already exists');
+    // Enforce email uniqueness, and auto-generate a unique username if requested one is taken
+    const existingByEmail = await UserService.findByUsernameOrEmail(undefined, userData.email);
+    if (existingByEmail && existingByEmail.email === userData.email) {
+      // Idempotent behavior for mobile guide registration: update existing user if compatible
+      if (platform === 'mobile' && userData.role === 'guide') {
+        const updated = await UserService.updateUserById(existingByEmail._id, {
+          role: 'guide',
+          status: 'pending',
+          platform: 'mobile',
+          isActive: true,
+          guideDetails: userData.guideDetails || existingByEmail.guideDetails || null,
+        });
+        // Upsert in guide-service
+        try {
+          const GUIDE_URL = process.env.GUIDE_SERVICE_URL || 'http://localhost:3005';
+          const payload = {
+            userId: updated._id.toString(),
+            username: updated.username,
+            status: updated.status,
+            details: updated.guideDetails || undefined,
+          };
+          await fetch(`${GUIDE_URL}/guide/insert`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+        } catch (e) {
+          console.warn('Guide sync failed (idempotent email register):', e?.message || e);
+        }
+
+        // For pending guides, don't issue tokens
+        return UserService.formatUserResponse(updated, false);
+      }
+      throw new Error('Email already exists');
+    }
+
+    // If requested username exists, generate an available alternative
+    let finalUsername = userData.username;
+    const existingByUsername = await UserService.findByUsernameOrEmail(userData.username, undefined);
+    if (existingByUsername && existingByUsername.username === userData.username) {
+      const base = String(userData.username || 'user').toLowerCase().replace(/[^a-z0-9_\.\-]/g, '');
+      let attempt = 0;
+      let candidate = base;
+      // Try a few deterministic suffixes, then random
+      while (attempt < 20) {
+        // first 5 attempts: -1..-5; then random 4 digits
+        candidate = attempt < 5 ? `${base}${attempt + 1}` : `${base}${Math.floor(1000 + Math.random() * 9000)}`;
+        // eslint-disable-next-line no-await-in-loop
+        const exists = await UserService.findByUsernameOrEmail(candidate, undefined);
+        if (!exists) break;
+        attempt += 1;
+      }
+      if (attempt >= 20) {
+        throw new Error('Username already exists');
+      }
+      finalUsername = candidate;
     }
 
     // Determine role and status based on platform and role
@@ -32,7 +84,7 @@ class AuthService {
 
     // Create user
     const newUser = await UserService.createUser({
-      username: userData.username,
+      username: finalUsername,
       email: userData.email,
       password: userData.password,
       role,
@@ -42,6 +94,29 @@ class AuthService {
       emailVerified: false,
       guideDetails: userData.guideDetails || null
     });
+
+    // If a guide registered, notify guide-service to upsert a Guide record
+    if (role === 'guide') {
+      try {
+        const GUIDE_URL = process.env.GUIDE_SERVICE_URL || 'http://localhost:3005';
+        const payload = {
+          userId: newUser._id.toString(),
+          username: newUser.username,
+          status, // likely 'pending' at registration
+          details: userData.guideDetails || undefined,
+        };
+        // Use native fetch to avoid adding a dependency
+        // Prefer CRUD insert which is idempotent (upsert by userId)
+        await fetch(`${GUIDE_URL}/guide/insert`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } catch (e) {
+        // Log and continue; do not block user registration if guide-service is unavailable
+        console.warn('Guide sync failed (registration):', e?.message || e);
+      }
+    }
 
     // Generate tokens only for active users
     if (status === 'active') {
