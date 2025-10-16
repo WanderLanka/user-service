@@ -1,65 +1,32 @@
 const UserService = require('./userService');
 const TokenService = require('./tokenService');
 const { validationResult } = require('express-validator');
+const { platformHelper, logger } = require('../utils');
 
 class AuthService {
-  static async register(userData, platform = 'web') {
-    // Enforce email uniqueness, and auto-generate a unique username if requested one is taken
-    const existingByEmail = await UserService.findByUsernameOrEmail(undefined, userData.email);
-    if (existingByEmail && existingByEmail.email === userData.email) {
-      // Idempotent behavior for mobile guide registration: update existing user if compatible
-      if (platform === 'mobile' && userData.role === 'guide') {
-        const updated = await UserService.updateUserById(existingByEmail._id, {
-          role: 'guide',
-          status: 'pending',
-          platform: 'mobile',
-          isActive: true,
-          guideDetails: userData.guideDetails || existingByEmail.guideDetails || null,
-        });
-        // Upsert in guide-service
-        try {
-          const GUIDE_URL = process.env.GUIDE_SERVICE_URL || 'http://localhost:3005';
-          const payload = {
-            userId: updated._id.toString(),
-            username: updated.username,
-            status: updated.status,
-            details: updated.guideDetails || undefined,
-          };
-          await fetch(`${GUIDE_URL}/guide/insert`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
-        } catch (e) {
-          console.warn('Guide sync failed (idempotent email register):', e?.message || e);
-        }
-
-        // For pending guides, don't issue tokens
-        return UserService.formatUserResponse(updated, false);
-      }
-      throw new Error('Email already exists');
+    
+  static validateRequest(req) {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      const errorMessages = errors.array().map(error => error.msg);
+      throw new Error(errorMessages.join(', '));
     }
+  }
 
-    // If requested username exists, generate an available alternative
-    let finalUsername = userData.username;
-    const existingByUsername = await UserService.findByUsernameOrEmail(userData.username, undefined);
-    if (existingByUsername && existingByUsername.username === userData.username) {
-      const base = String(userData.username || 'user').toLowerCase().replace(/[^a-z0-9_\.\-]/g, '');
-      let attempt = 0;
-      let candidate = base;
-      // Try a few deterministic suffixes, then random
-      while (attempt < 20) {
-        // first 5 attempts: -1..-5; then random 4 digits
-        candidate = attempt < 5 ? `${base}${attempt + 1}` : `${base}${Math.floor(1000 + Math.random() * 9000)}`;
-        // eslint-disable-next-line no-await-in-loop
-        const exists = await UserService.findByUsernameOrEmail(candidate, undefined);
-        if (!exists) break;
-        attempt += 1;
-      }
-      if (attempt >= 20) {
-        throw new Error('Username already exists');
-      }
-      finalUsername = candidate;
+  static async register(userData, platform) {
+    // Note: validation and platform detection is done in controller
+    
+    console.log('Detected platform:', platform, 'Role received:', userData.role);
+
+    // Log attempt
+    logger.auth('Registration', platform, userData.username);
+
+    // Check if user already exists
+    const existingUser = await UserService.findByUsernameOrEmail(userData.username, userData.email);
+    if (existingUser) {
+      const error = new Error(existingUser.username === userData.username ? 'Username already exists' : 'Email already exists');
+      error.statusCode = 409;
+      throw error;
     }
 
     // Determine role and status based on platform and role
@@ -67,24 +34,28 @@ class AuthService {
     let status = 'active';
 
     if (platform === 'web') {
-      const validWebRoles = ['transport', 'accommodation'];
+      const validWebRoles = ['traveler', 'transport', 'accommodation', 'Sysadmin'];  // Web: all EXCEPT guide
       if (!validWebRoles.includes(role)) {
-        throw new Error('Invalid role for web application');
+        const error = new Error('Invalid role for web application');
+        error.statusCode = 400;
+        throw error;
       }
     } else if (platform === 'mobile') {
-      const validMobileRoles = ['tourist', 'guide'];
+      const validMobileRoles = ['traveler', 'guide'];  // Mobile: ONLY traveler and guide
       if (!validMobileRoles.includes(role)) {
-        throw new Error('Role must be either tourist or guide');
+        const error = new Error('Role must be either traveler or guide');
+        error.statusCode = 400;
+        throw error;
       }
-      // Map tourist to traveller for mobile app
-      if (role === 'tourist') role = 'traveller';
+      // For mobile, map traveler to traveller in database
+      if (role === 'traveler') role = 'traveller';
       // Guides need admin approval
       if (role === 'guide') status = 'pending';
     }
 
     // Create user
     const newUser = await UserService.createUser({
-      username: finalUsername,
+      username: userData.username,
       email: userData.email,
       password: userData.password,
       role,
@@ -136,10 +107,18 @@ class AuthService {
     }
 
     // Platform-specific role validation
-    if (platform === 'web' && !['transport', 'accommodation'].includes(user.role)) {
-      throw new Error('Invalid credentials');
-    } else if (platform === 'mobile' && !['traveller', 'guide'].includes(user.role)) {
-      throw new Error('Invalid credentials');
+    if (platform === 'web') {
+      // Web allows all roles EXCEPT guide: traveler, transport, accommodation, admin
+      if (!['traveler', 'traveller', 'transport', 'accommodation', 'Sysadmin'].includes(user.role)) {
+        const error = new Error('Invalid credentials');
+        error.statusCode = 401;
+        throw error;
+      }
+    } else if (platform === 'mobile') {
+      // Mobile allows ONLY: travelers and guides
+      if (!['traveler', 'traveller', 'guide'].includes(user.role)) {
+        throw new Error('Invalid credentials');
+      }
     }
 
     // Verify password

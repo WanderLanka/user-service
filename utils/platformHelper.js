@@ -1,7 +1,11 @@
 const platformHelper = {
   detectPlatform: (req) => {
 
-    //Checking the custome tag of the header
+    // Check for both x-platform and x-client-type headers for compatibility
+    if (req.headers['x-platform']) {
+      return req.headers['x-platform'].toLowerCase();
+    }
+    
     if (req.headers['x-client-type']) {
       return req.headers['x-client-type'].toLowerCase();
     }
