@@ -19,7 +19,8 @@ class AuthService {
 
     // Detect platform
     const platform = platformHelper.detectPlatform(req);
-    
+    console.log('Detected platform:', platform, 'Role received:', req.body.role);
+
     // Log attempt
     logger.auth('Registration', platform, req.body.username);
 
@@ -36,7 +37,7 @@ class AuthService {
     let status = 'active';
 
     if (platform === 'web') {
-      const validWebRoles = ['tourist', 'guide', 'transport', 'accommodation'];
+      const validWebRoles = ['traveler', 'guide', 'transport', 'accommodation'];
       if (!validWebRoles.includes(role)) {
         const error = new Error('Invalid role for web application');
         error.statusCode = 400;
@@ -109,7 +110,7 @@ class AuthService {
     }
 
     // Platform-specific role validation
-    if (platform === 'web' && !['tourist', 'transport', 'accommodation', 'Sysadmin'].includes(user.role)) {
+    if (platform === 'web' && !['traveler', 'transport', 'accommodation', 'Sysadmin'].includes(user.role)) {
       const error = new Error('Invalid credentials');
       error.statusCode = 401;
       throw error;
