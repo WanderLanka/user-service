@@ -10,6 +10,7 @@ router.get('/health', authController.healthCheck);
 
 // Unified authentication endpoints (work for both web and mobile)
 router.post('/signup', authLimiter, validateSignup, authController.register);
+router.post('/register', authLimiter, validateSignup, authController.register);
 router.post('/login', authLimiter, validateLogin, authController.login);
 router.post('/logout', authController.logout);
 router.post('/refresh', authController.refreshToken);

@@ -37,21 +37,21 @@ class AuthService {
     let status = 'active';
 
     if (platform === 'web') {
-      const validWebRoles = ['traveler', 'guide', 'transport', 'accommodation'];
+      const validWebRoles = ['traveler', 'transport', 'accommodation', 'Sysadmin'];  // Web: all EXCEPT guide
       if (!validWebRoles.includes(role)) {
         const error = new Error('Invalid role for web application');
         error.statusCode = 400;
         throw error;
       }
     } else if (platform === 'mobile') {
-      const validMobileRoles = ['tourist', 'guide'];
+      const validMobileRoles = ['traveler', 'guide'];  // Mobile: ONLY traveler and guide
       if (!validMobileRoles.includes(role)) {
-        const error = new Error('Role must be either tourist or guide');
+        const error = new Error('Role must be either traveler or guide');
         error.statusCode = 400;
         throw error;
       }
-      // Map tourist to traveller for mobile app
-      if (role === 'tourist') role = 'traveller';
+      // For mobile, map traveler to traveller in database
+      if (role === 'traveler') role = 'traveller';
       // Guides need admin approval
       if (role === 'guide') status = 'pending';
     }
