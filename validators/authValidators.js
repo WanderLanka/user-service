@@ -16,7 +16,7 @@ const validateSignup = [
     .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
     .withMessage('Password must contain at least one uppercase letter, one lowercase letter, and one number'),
   body('role')
-    .isIn(['tourist', 'transport', 'accommodation', 'guide'])
+    .isIn(['traveler', 'transport', 'accommodation', 'guide'])  /////// Traveler instead of Tourist
     .withMessage('Invalid role selected')
 ];
 

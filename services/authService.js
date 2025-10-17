@@ -1,183 +1,189 @@
 const UserService = require('./userService');
 const TokenService = require('./tokenService');
 const { validationResult } = require('express-validator');
+const { platformHelper, logger } = require('../utils');
 
 class AuthService {
-  static async register(userData, platform = 'web') {
-    // Enforce email uniqueness, and auto-generate a unique username if requested one is taken
-    const existingByEmail = await UserService.findByUsernameOrEmail(undefined, userData.email);
-    if (existingByEmail && existingByEmail.email === userData.email) {
-      // Idempotent behavior for mobile guide registration: update existing user if compatible
-      if (platform === 'mobile' && userData.role === 'guide') {
-        const updated = await UserService.updateUserById(existingByEmail._id, {
-          role: 'guide',
-          status: 'pending',
-          platform: 'mobile',
-          isActive: true,
-          guideDetails: userData.guideDetails || existingByEmail.guideDetails || null,
-        });
-        // Upsert in guide-service
-        try {
-          const GUIDE_URL = process.env.GUIDE_SERVICE_URL || 'http://localhost:3005';
-          const payload = {
-            userId: updated._id.toString(),
-            username: updated.username,
-            status: updated.status,
-            details: updated.guideDetails || undefined,
-          };
-          await fetch(`${GUIDE_URL}/guide/insert`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
-        } catch (e) {
-          console.warn('Guide sync failed (idempotent email register):', e?.message || e);
-        }
-
-        // For pending guides, don't issue tokens
-        return UserService.formatUserResponse(updated, false);
-      }
-      throw new Error('Email already exists');
+    
+  static validateRequest(req) {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      const errorMessages = errors.array().map(error => error.msg);
+      throw new Error(errorMessages.join(', '));
     }
+  }
 
-    // If requested username exists, generate an available alternative
-    let finalUsername = userData.username;
-    const existingByUsername = await UserService.findByUsernameOrEmail(userData.username, undefined);
-    if (existingByUsername && existingByUsername.username === userData.username) {
-      const base = String(userData.username || 'user').toLowerCase().replace(/[^a-z0-9_\.\-]/g, '');
-      let attempt = 0;
-      let candidate = base;
-      // Try a few deterministic suffixes, then random
-      while (attempt < 20) {
-        // first 5 attempts: -1..-5; then random 4 digits
-        candidate = attempt < 5 ? `${base}${attempt + 1}` : `${base}${Math.floor(1000 + Math.random() * 9000)}`;
-        // eslint-disable-next-line no-await-in-loop
-        const exists = await UserService.findByUsernameOrEmail(candidate, undefined);
-        if (!exists) break;
-        attempt += 1;
-      }
-      if (attempt >= 20) {
-        throw new Error('Username already exists');
-      }
-      finalUsername = candidate;
+  static async register(req) {
+    // Validate request
+    this.validateRequest(req);
+
+    // Detect platform
+    const platform = platformHelper.detectPlatform(req);
+    console.log('Detected platform:', platform, 'Role received:', req.body.role);
+
+    // Log attempt
+    logger.auth('Registration', platform, req.body.username);
+
+    // Check if user already exists
+    const existingUser = await UserService.findByUsernameOrEmail(req.body.username, req.body.email);
+    if (existingUser) {
+      const error = new Error(existingUser.username === req.body.username ? 'Username already exists' : 'Email already exists');
+      error.statusCode = 409;
+      throw error;
     }
 
     // Determine role and status based on platform and role
-    let role = userData.role;
+    let role = req.body.role;
     let status = 'active';
 
     if (platform === 'web') {
-      const validWebRoles = ['transport', 'accommodation'];
+      const validWebRoles = ['traveler', 'transport', 'accommodation', 'Sysadmin'];  // Web: all EXCEPT guide
       if (!validWebRoles.includes(role)) {
-        throw new Error('Invalid role for web application');
+        const error = new Error('Invalid role for web application');
+        error.statusCode = 400;
+        throw error;
       }
     } else if (platform === 'mobile') {
-      const validMobileRoles = ['tourist', 'guide'];
+      const validMobileRoles = ['traveler', 'guide'];  // Mobile: ONLY traveler and guide
       if (!validMobileRoles.includes(role)) {
-        throw new Error('Role must be either tourist or guide');
+        const error = new Error('Role must be either traveler or guide');
+        error.statusCode = 400;
+        throw error;
       }
-      // Map tourist to traveller for mobile app
-      if (role === 'tourist') role = 'traveller';
+      // For mobile, map traveler to traveller in database
+      if (role === 'traveler') role = 'traveller';
       // Guides need admin approval
       if (role === 'guide') status = 'pending';
     }
 
     // Create user
     const newUser = await UserService.createUser({
-      username: finalUsername,
-      email: userData.email,
-      password: userData.password,
+      username: req.body.username,
+      email: req.body.email,
+      password: req.body.password,
       role,
       platform,
       status,
       isActive: true,
       emailVerified: false,
-      guideDetails: userData.guideDetails || null
+      guideDetails: req.body.guideDetails || null
     });
 
-    // If a guide registered, notify guide-service to upsert a Guide record
-    if (role === 'guide') {
-      try {
-        const GUIDE_URL = process.env.GUIDE_SERVICE_URL || 'http://localhost:3005';
-        const payload = {
-          userId: newUser._id.toString(),
-          username: newUser.username,
-          status, // likely 'pending' at registration
-          details: userData.guideDetails || undefined,
-        };
-        // Use native fetch to avoid adding a dependency
-        // Prefer CRUD insert which is idempotent (upsert by userId)
-        await fetch(`${GUIDE_URL}/guide/insert`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-      } catch (e) {
-        // Log and continue; do not block user registration if guide-service is unavailable
-        console.warn('Guide sync failed (registration):', e?.message || e);
-      }
-    }
+    // Log success
+    logger.authSuccess('Registration', platform, req.body.username);
 
-    // Generate tokens only for active users
-    if (status === 'active') {
-      const tokens = TokenService.generateTokens(newUser, platform);
-      await UserService.addRefreshToken(newUser._id, tokens.refreshToken);
-      return UserService.formatUserResponse(newUser, true, tokens);
-    }
-
-    return UserService.formatUserResponse(newUser, false);
+    // Registration only returns user data, no tokens
+    // Users must login separately to get tokens
+    const userData = UserService.formatUserResponse(newUser, false);
+    
+    // Return structured response based on user role and status
+    const message = (newUser.role === 'guide' && newUser.status === 'pending') 
+      ? 'Guide registration submitted successfully. Your application will be reviewed by admin.' 
+      : 'User registered successfully. Please login to access your account.';
+    
+    return {
+      data: userData,
+      message,
+      statusCode: 201
+    };
   }
 
-  static async login(identifier, password, platform = 'web') {
+  static async login(req) {
+    // Validate request
+    this.validateRequest(req);
+
+    // Detect platform
+    const platform = platformHelper.detectPlatform(req);
+    
+    // Handle both identifier (mobile) and username (web) formats
+    const identifier = req.body.identifier || req.body.username;
+    
+    // Log attempt
+    logger.auth('Login', platform, identifier);
+
     // Find user
     const user = await UserService.findByCredentials(identifier);
     if (!user) {
-      throw new Error('Invalid credentials');
+      const error = new Error('Invalid credentials');
+      error.statusCode = 401;
+      throw error;
     }
 
     // Platform-specific role validation
-    if (platform === 'web' && !['transport', 'accommodation'].includes(user.role)) {
-      throw new Error('Invalid credentials');
+    if (platform === 'web' && !['traveler', 'transport', 'accommodation', 'Sysadmin'].includes(user.role)) {
+      const error = new Error('Invalid credentials');
+      error.statusCode = 401;
+      throw error;
     } else if (platform === 'mobile' && !['traveller', 'guide'].includes(user.role)) {
-      throw new Error('Invalid credentials');
+      const error = new Error('Invalid credentials');
+      error.statusCode = 401;
+      throw error;
     }
 
     // Verify password
-    const isPasswordValid = await TokenService.comparePassword(password, user.password);
+    const isPasswordValid = await TokenService.comparePassword(req.body.password, user.password);
     if (!isPasswordValid) {
-      throw new Error('Invalid credentials');
+      const error = new Error('Invalid credentials');
+      error.statusCode = 401;
+      throw error;
     }
 
     // Check account status
     if (user.role === 'guide' && user.status === 'pending') {
-      throw new Error('Your guide account is still under review. Please wait for admin approval.');
+      const error = new Error('Your guide account is still under review. Please wait for admin approval.');
+      error.statusCode = 403;
+      throw error;
     }
 
     if (user.status === 'suspended') {
-      throw new Error('Your account has been suspended. Please contact support.');
+      const error = new Error('Your account has been suspended. Please contact support.');
+      error.statusCode = 403;
+      throw error;
     }
 
     if (user.status === 'rejected') {
-      throw new Error('Your guide application has been rejected. Please contact support for more information.');
+      const error = new Error('Your guide application has been rejected. Please contact support for more information.');
+      error.statusCode = 403;
+      throw error;
     }
 
     // Generate tokens
     const tokens = TokenService.generateTokens(user, platform);
     await UserService.addRefreshToken(user._id, tokens.refreshToken);
 
-    return UserService.formatUserResponse(user, true, tokens);
+    // Log success
+    logger.authSuccess('Login', platform, identifier);
+
+    const userData = UserService.formatUserResponse(user, true, tokens);
+    
+    return {
+      data: userData,
+      message: 'Login successful',
+      statusCode: 200
+    };
   }
 
-  static async logout(refreshToken) {
+  static async logout(req) {
+    const refreshToken = req.body.refreshToken;
+    
     if (refreshToken) {
       await UserService.removeRefreshToken(refreshToken);
     }
-    return { message: 'Logged out successfully' };
+    
+    return {
+      data: {},
+      message: 'Logged out successfully',
+      statusCode: 200
+    };
   }
 
-  static async refreshToken(refreshToken) {
+  static async refreshToken(req) {
+    const refreshToken = req.body.refreshToken;
+    
     if (!refreshToken) {
-      throw new Error('No refresh token provided');
+      const error = new Error('No refresh token provided');
+      error.statusCode = 400;
+      throw error;
     }
 
     // Verify refresh token
@@ -185,51 +191,77 @@ class AuthService {
     try {
       decoded = TokenService.verifyToken(refreshToken);
     } catch (err) {
-      throw new Error('Token verification failed');
+      const error = new Error('Token verification failed');
+      error.statusCode = 401;
+      throw error;
     }
 
     // Find user and validate refresh token
     const user = await UserService.findValidRefreshToken(decoded.userId, refreshToken);
     if (!user) {
-      throw new Error('Invalid refresh token');
+      const error = new Error('Invalid refresh token');
+      error.statusCode = 401;
+      throw error;
     }
 
     // Generate new tokens
     const tokens = TokenService.generateTokens(user, decoded.platform);
-
-    // Replace old refresh token with new one
-    await UserService.removeRefreshToken(refreshToken);
     await UserService.addRefreshToken(user._id, tokens.refreshToken);
+    await UserService.removeRefreshToken(refreshToken);
 
-    return UserService.formatUserResponse(user, true, tokens);
+    const userData = UserService.formatUserResponse(user, true, tokens);
+    
+    return {
+      data: userData,
+      message: 'Token refreshed successfully',
+      statusCode: 200
+    };
   }
-
-  static async getProfile(userId) {
+  static async getProfile(req) {
+    const userId = req.user.userId;
+    
     const user = await UserService.getUserProfile(userId);
     if (!user) {
-      throw new Error('Profile not found');
+      const error = new Error('Profile not found');
+      error.statusCode = 404;
+      throw error;
     }
-    return UserService.formatUserResponse(user);
+    
+    const userData = UserService.formatUserResponse(user);
+    
+    return {
+      data: { user: userData },
+      message: 'Profile retrieved successfully',
+      statusCode: 200
+    };
   }
 
-  static async cleanupExpiredTokens() {
+  static async verifyToken(req) {
+    const userData = {
+      valid: true,
+      user: {
+        userId: req.user.userId,
+        username: req.user.username,
+        role: req.user.role,
+        platform: req.user.platform
+      }
+    };
+    
+    return {
+      data: userData,
+      message: 'Token is valid',
+      statusCode: 200
+    };
+  }
+
+  static async cleanupExpiredTokens(req) {
     const result = await UserService.cleanupExpiredTokens();
-    return { modifiedCount: result.modifiedCount };
-  }
-
-  static validateRequest(req) {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      throw new Error(errors.array()[0].msg);
-    }
-  }
-
-  static detectPlatform(userAgent) {
-    // Simple platform detection based on User-Agent
-    if (userAgent && userAgent.includes('Expo')) {
-      return 'mobile';
-    }
-    return 'web';
+    
+    return {
+      data: { modifiedCount: result.modifiedCount },
+      message: 'Token cleanup completed',
+      statusCode: 200
+    };
   }
 }
 
