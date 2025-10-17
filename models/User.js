@@ -24,7 +24,7 @@ const userSchema = new mongoose.Schema({
   role: {
     type: String,
     required: true,
-    enum: ['traveler', 'traveller', 'transport', 'accommodation', 'guide'],   // Mobile uses 'traveler' → mapped to 'traveller'
+    enum: ['traveler', 'traveller', 'transport', 'accommodation', 'guide'],   //// Change the tourist to traveler here
     default: 'traveler'
   },
   status: {
