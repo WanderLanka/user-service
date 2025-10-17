@@ -12,9 +12,10 @@ const logger = {
   },
 
   request: (req) => {
-    const { method, path, ip } = req;
+    const { method, path, ip} = req;
     const userAgent = req.get('User-Agent') || 'Unknown';
     console.log(`${new Date().toISOString()} - REQUEST: ${method} ${path} - ${userAgent} - IP: ${ip}`);
+    // console.log('Headers:', req.headers);  // DEBUGGING
   },
 
   auth: (action, platform, identifier) => {
