@@ -54,6 +54,8 @@ const userSchema = new mongoose.Schema({
     lastName: String,
     nicNumber: String,
     dateOfBirth: String,
+    bio: String,
+    languages: [String],
     proofDocument: String,
     approvedAt: {
       type: Date,

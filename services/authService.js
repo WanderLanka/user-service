@@ -72,6 +72,17 @@ class AuthService {
     // Log success
     logger.authSuccess('Registration', platform, req.body.username);
 
+    // If guide registration, sync with guide-service
+    if (newUser.role === 'guide') {
+      try {
+        await this.syncGuideToGuideService(newUser);
+        console.log('✅ Guide synced to guide-service:', newUser.username);
+      } catch (syncError) {
+        console.error('⚠️ Failed to sync guide to guide-service:', syncError.message);
+        // Don't fail the registration if sync fails - admin can retry later
+      }
+    }
+
     // Registration only returns user data, no tokens
     // Users must login separately to get tokens
     const userData = UserService.formatUserResponse(newUser, false);
@@ -262,6 +273,65 @@ class AuthService {
       message: 'Token cleanup completed',
       statusCode: 200
     };
+  }
+
+  /**
+   * Sync guide data to guide-service
+   * Called after guide registration or status updates
+   */
+  static async syncGuideToGuideService(user) {
+    try {
+      if (!user || user.role !== 'guide') {
+        console.warn('⚠️ Attempted to sync non-guide user to guide-service');
+        return;
+      }
+
+      const GUIDE_SERVICE_URL = process.env.GUIDE_SERVICE_URL || 'http://localhost:3005';
+      const guideServiceEndpoint = `${GUIDE_SERVICE_URL}/guide/insert`;
+      
+      // Prepare payload for guide-service
+      const payload = {
+        userId: user._id.toString(),
+        username: user.username,
+        status: user.status || 'pending',
+        details: {
+          firstName: user.guideDetails?.firstName,
+          lastName: user.guideDetails?.lastName,
+          bio: user.guideDetails?.bio || '',
+          languages: user.guideDetails?.languages || [],
+          avatar: user.avatar || null,
+        },
+        featured: false, // New guides are not featured by default
+      };
+
+      console.log('🔄 Syncing guide to guide-service:', {
+        endpoint: guideServiceEndpoint,
+        userId: payload.userId,
+        username: payload.username,
+        status: payload.status,
+      });
+
+      const response = await fetch(guideServiceEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Guide-service returned ${response.status}: ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ Guide successfully synced to guide-service:', result);
+      
+      return result;
+    } catch (error) {
+      console.error('❌ Error syncing guide to guide-service:', error.message);
+      throw error;
+    }
   }
 }
 
