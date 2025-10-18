@@ -36,6 +36,15 @@ const login = async (req, res) => {
   }
 };
 
+const redirect = async (req, res) => {
+  try {
+    const result = await AuthService.redirect(req);
+    return responseHelper.sendResponse(req, res, result.data, result.message, result.statusCode);
+  } catch (err) {
+    return responseHelper.sendError(req, res, err.message, 'Redirection failed', err.statusCode || 400);
+  } 
+};
+
 // Logout endpoint - unified for web and mobile
 const logout = async (req, res) => {
   try {
@@ -89,6 +98,7 @@ const cleanupTokens = async (req, res) => {
 module.exports = {
   healthCheck,
   register,
+  redirect,
   login,
   logout,
   refreshToken,
