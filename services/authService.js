@@ -56,6 +56,23 @@ class AuthService {
       if (role === 'guide') status = 'pending';
     }
 
+    // Handle document upload for guides
+    let documentPath = null;
+    if (req.file) {
+      // Document uploaded via multer - saved to uploads/docs/
+      documentPath = req.file.path;
+      console.log('📄 Document uploaded:', documentPath);
+    }
+
+    // Prepare guideDetails with document path if guide role
+    let guideDetails = req.body.guideDetails || null;
+    if (role === 'guide' && documentPath) {
+      guideDetails = {
+        ...guideDetails,
+        proofDocument: documentPath
+      };
+    }
+
     // Create user
     const newUser = await UserService.createUser({
       username: req.body.username,
@@ -66,7 +83,7 @@ class AuthService {
       status,
       isActive: true,
       emailVerified: false,
-      guideDetails: req.body.guideDetails || null
+      guideDetails
     });
 
     // Log success
