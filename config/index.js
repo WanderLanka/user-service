@@ -12,8 +12,8 @@ const config = {
     'exp://192.168.8.142:8081'
   ],
   rateLimiting: {
-    windowMs: 15 * 60 * 1000, // 1 minutes
-    max: 100, // limit each IP to 100 requests per windowMs
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: process.env.NODE_ENV === 'production' ? 10 : 1000, // 10 for prod, 1000 for dev
     message: {
       error: 'Too many authentication attempts, please try again later.',
     }
