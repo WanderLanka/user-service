@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const config = require('./config');
 const { logger } = require('./utils');
 const authRoutes = require('./routes/authRoutes');
@@ -13,6 +14,9 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+// Serve uploaded documents statically (e.g., /uploads/docs/<file>)
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 // Request logging middleware
 app.use((req, res, next) => {
