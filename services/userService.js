@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const Tempuser =require('../models/Tempuser');
 const TokenService = require('./tokenService');
 
 class UserService {
@@ -26,6 +27,16 @@ class UserService {
     });
 
     return await user.save();
+  }
+
+  
+  static async createTempUser(tempUserData) {
+    const hashedPassword = await TokenService.hashPassword(tempUserData.password);  
+    const tempUser = new Tempuser({
+      ...tempUserData,
+      password: hashedPassword
+    });   
+    return await tempUser.save();
   }
 
   static async addRefreshToken(userId, refreshToken) {
