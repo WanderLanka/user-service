@@ -21,6 +21,13 @@ router.post('/logout', authController.logout);
 router.post('/refresh', authController.refreshToken);
 router.get('/profile', verifyUnifiedToken, authController.getProfile);
 router.get('/verify-token', verifyUnifiedToken, authController.verifyToken);
+// Admin: fetch access requests (GET used by frontend admin panel)
+router.get('/requests', authController.requests);
+// Also keep POST /requests for backward compatibility
+router.put('/updateRequestStatus', authController.updateRequestStatus);
+
+// Serve a specific request's document (streams PDF/binary)
+router.get('/requests/:id/document', authController.getRequestDocument);
 
 // Legacy guide registration endpoint (mobile) - maps to register with platform override
 router.post('/api/auth/guide-registration', authLimiter, (req, res, next) => {
