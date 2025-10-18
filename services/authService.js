@@ -87,6 +87,106 @@ class AuthService {
       statusCode: 201
     };
   }
+ static async redirect(req){
+  // Validate request
+  this.validateRequest(req);
+
+  // Detect platform
+  const platform = platformHelper.detectPlatform(req);
+  console.log('Detected platform:', platform, 'Role received:', req.body.role);
+
+  // Log attempt
+  logger.auth('Registration', platform, req.body.username);
+
+  // Check if user already exists
+  const existingUser = await UserService.findByUsernameOrEmail(req.body.username, req.body.email);
+  if (existingUser) {
+    const error = new Error(existingUser.username === req.body.username ? 'Username already exists' : 'Email already exists');
+    error.statusCode = 409;
+    throw error;
+  }
+
+  // Determine role and status based on platform and role
+  let role = req.body.role;
+  let status = 'active';
+  
+  // FIX: Get document from uploaded file, not req.body
+  let document = null;
+  if (req.file) {
+    // If using multer with single file upload
+    document = req.file.path; // or req.file.filename or req.file.location (for cloud storage)
+  } else if (req.files && req.files.document) {
+    // If using multer with named fields or express-fileupload
+    document = req.files.document.path; // adjust based on your setup
+  }
+
+  if (platform === 'web') {
+    const validWebRoles = ['traveler', 'transport', 'accommodation', 'Sysadmin'];
+    if (!validWebRoles.includes(role)) {
+      const error = new Error('Invalid role for web application');
+      error.statusCode = 400;
+      throw error;
+    }
+    
+    // Validate document requirement for transport and accommodation
+    if ((role === 'transport' || role === 'accommodation') && !document) {
+      const error = new Error('Document is required for transport and accommodation roles');
+      error.statusCode = 400;
+      throw error;
+    }
+    
+    // Set status to pending for roles requiring approval
+    if (role === 'transport' || role === 'accommodation') {
+      status = 'pending';
+    }
+    
+  } else if (platform === 'mobile') {
+    const validMobileRoles = ['traveler', 'guide'];
+    if (!validMobileRoles.includes(role)) {
+      const error = new Error('Role must be either traveler or guide');
+      error.statusCode = 400;
+      throw error;
+    }
+    
+    // For mobile, map traveler to traveller in database
+    if (role === 'traveler') role = 'traveller';
+    
+    // Guides need admin approval
+    if (role === 'guide') status = 'pending';
+  }
+
+  // Create user
+  const newUser = await UserService.createTempUser({
+    username: req.body.username,
+    email: req.body.email,
+    password: req.body.password,
+    role,
+    platform,
+    status,
+    document,
+    isActive: true,
+    emailVerified: false,
+  });
+
+  console.log('New user created with document:', newUser);
+
+  // Log success
+  logger.authSuccess('Registration', platform, req.body.username);
+
+  // Registration only returns user data, no tokens
+  const userData = UserService.formatUserResponse(newUser, false);
+  
+  // Return structured response based on user role and status
+  const message = ((newUser.role === 'guide' || newUser.role === 'transport' || newUser.role === 'accommodation') && newUser.status === 'pending') 
+    ? 'Registration submitted successfully. Your application will be reviewed by admin.' 
+    : 'User registered successfully. Please login to access your account.';
+  
+  return {
+    data: userData,
+    message,
+    statusCode: 201
+  };
+}
 
   static async login(req) {
     // Validate request
