@@ -156,7 +156,14 @@ POST /api/auth/cleanup-tokens - Cleanup expired refresh tokens
 ## Environment Variables
 
 ```bash
-MONGO_URI="mongodb+srv://username:password@cluster.mongodb.net/?retryWrites=true&w=majority"
+# Preferred (dedicated user DB)
+USER_MONGO_URI="mongodb+srv://username:password@cluster.mongodb.net/?retryWrites=true&w=majority"
+USER_DB_NAME="wanderlanka_user"
+
+# Backward compatible fallback
+# If USER_MONGO_URI is not set, MONGO_URI will be used instead, and DB name defaults to wanderlanka_user
+# MONGO_URI="mongodb://localhost:27017"
+
 JWT_SECRET="your-super-secret-jwt-key-change-this-in-production"
 PORT=3001
 ```
