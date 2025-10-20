@@ -24,4 +24,18 @@ router.put('/profile', verifyUnifiedToken, updateProfile);
  */
 router.get('/profile/status', verifyUnifiedToken, getAccountStatus);
 
+/**
+ * @route   PUT /profile/account-status
+ * @desc    Toggle account active/inactive status
+ * @access  Private
+ */
+router.put('/profile/account-status', verifyUnifiedToken, require('../controllers/profileController').toggleAccountStatus);
+
+/**
+ * @route   DELETE /profile/delete-account
+ * @desc    Delete user account (soft delete - deactivates account)
+ * @access  Private
+ */
+router.delete('/profile/delete-account', verifyUnifiedToken, require('../controllers/profileController').deleteAccount);
+
 module.exports = router;

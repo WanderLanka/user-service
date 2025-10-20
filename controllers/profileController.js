@@ -244,8 +244,125 @@ const getAccountStatus = async (req, res) => {
   }
 };
 
+/**
+ * Toggle account status (active/inactive)
+ * @route PUT /profile/account-status
+ * @access Private
+ */
+const toggleAccountStatus = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { isActive } = req.body;
+
+    logger.info(`🔄 Toggling account status for user: ${userId} to ${isActive}`);
+
+    // Validate input
+    if (typeof isActive !== 'boolean') {
+      return responseHelper.sendError(req, res, 'isActive must be a boolean value', 'Bad Request', 400);
+    }
+
+    // Find and update user
+    const user = await User.findById(userId);
+
+    if (!user) {
+      logger.warn(`User not found: ${userId}`);
+      return responseHelper.sendError(req, res, 'User not found', 'Not Found', 404);
+    }
+
+    // Update status
+    user.isActive = isActive;
+    user.status = isActive ? 'active' : 'inactive';
+    await user.save();
+
+    logger.info(`✅ Account status updated for user: ${userId} - isActive: ${isActive}`);
+
+    return responseHelper.sendResponse(req, res, {
+      isActive: user.isActive,
+      status: user.status,
+      message: isActive ? 'Account activated successfully' : 'Account deactivated successfully'
+    }, 'Account status updated successfully', 200);
+
+  } catch (error) {
+    logger.error('Error toggling account status:', error);
+    return responseHelper.sendError(req, res, 'Failed to update account status', 'Server Error', 500);
+  }
+};
+
+/**
+ * Delete account (soft delete - deactivates account)
+ * @route DELETE /profile/delete-account
+ * @access Private
+ */
+const deleteAccount = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { password, confirmation } = req.body;
+
+    logger.info(`🗑️  Account deletion requested for user: ${userId}`);
+
+    // Validate confirmation
+    if (confirmation !== 'DELETE MY ACCOUNT') {
+      return responseHelper.sendError(
+        req, 
+        res, 
+        'Please type "DELETE MY ACCOUNT" to confirm account deletion', 
+        'Bad Request', 
+        400
+      );
+    }
+
+    // Find user
+    const user = await User.findById(userId);
+
+    if (!user) {
+      logger.warn(`User not found: ${userId}`);
+      return responseHelper.sendError(req, res, 'User not found', 'Not Found', 404);
+    }
+
+    // Verify password
+    const isPasswordValid = await user.comparePassword(password);
+    if (!isPasswordValid) {
+      logger.warn(`Invalid password for account deletion: ${userId}`);
+      return responseHelper.sendError(req, res, 'Invalid password', 'Unauthorized', 401);
+    }
+
+    // Soft delete: Deactivate account instead of deleting
+    user.isActive = false;
+    user.status = 'deleted';
+    user.emailVerified = false;
+    user.phoneVerified = false;
+    
+    // Clear refresh tokens
+    user.refreshTokens = [];
+    
+    // Add deletion timestamp
+    user.deletedAt = new Date();
+    
+    // Optionally anonymize personal data
+    // user.email = `deleted_${userId}@deleted.com`;
+    // user.phone = null;
+    // user.avatar = null;
+    // user.bio = null;
+    
+    await user.save();
+
+    logger.info(`✅ Account deleted (soft delete) for user: ${userId}`);
+
+    return responseHelper.sendResponse(req, res, {
+      message: 'Your account has been successfully deleted. You can no longer access your account.',
+      deletedAt: user.deletedAt
+    }, 'Account deleted successfully', 200);
+
+  } catch (error) {
+    logger.error('Error deleting account:', error);
+    return responseHelper.sendError(req, res, 'Failed to delete account', 'Server Error', 500);
+  }
+};
+
 module.exports = {
   getProfile,
   updateProfile,
   getAccountStatus,
+  toggleAccountStatus,
+  deleteAccount,
 };

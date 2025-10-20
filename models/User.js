@@ -29,7 +29,7 @@ const userSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['active', 'pending', 'suspended', 'rejected'],
+    enum: ['active', 'inactive', 'pending', 'suspended', 'rejected', 'deleted'],
     default: 'active'
   },
   platform: {
@@ -142,6 +142,10 @@ const userSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now },
     expiresAt: Date
   }],
+  deletedAt: {
+    type: Date,
+    default: null
+  },
   createdAt: {
     type: Date,
     default: Date.now
