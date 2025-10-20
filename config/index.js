@@ -1,5 +1,5 @@
 const config = {
-  port: process.env.PORT || 3001,
+  port: process.env.PORT || 3007,
   jwtSecret: process.env.JWT_SECRET || 'fallback-secret-key',
   accessTokenExpiry: '24h',
   refreshTokenExpiry: '7d',
