@@ -34,7 +34,7 @@ const userSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['active', 'pending', 'suspended', 'rejected'],
+    enum: ['active', 'inactive', 'pending', 'suspended', 'rejected', 'deleted'],
     default: 'active'
   },
   platform: {
@@ -53,6 +53,76 @@ const userSchema = new mongoose.Schema({
   avatar: {
     type: String,
     default: null
+  },
+  fullName: {
+    type: String,
+    trim: true,
+    default: null
+  },
+  phone: {
+    type: String,
+    trim: true,
+    default: null
+  },
+  phoneVerified: {
+    type: Boolean,
+    default: false
+  },
+  bio: {
+    type: String,
+    maxlength: 500,
+    default: null
+  },
+  dateOfBirth: {
+    type: String,
+    default: null
+  },
+  gender: {
+    type: String,
+    enum: ['Male', 'Female', 'Other', null],
+    default: null
+  },
+  nationality: {
+    type: String,
+    default: null
+  },
+  passportNumber: {
+    type: String,
+    trim: true,
+    default: null
+  },
+  emergencyContact: {
+    name: {
+      type: String,
+      default: null
+    },
+    phone: {
+      type: String,
+      default: null
+    },
+    relationship: {
+      type: String,
+      default: null
+    }
+  },
+  preferences: {
+    budget: {
+      type: String,
+      enum: ['Budget', 'Mid-range', 'Luxury', null],
+      default: null
+    },
+    accommodation: {
+      type: String,
+      enum: ['Hotel', 'Hostel', 'Guesthouse', 'Resort', 'Airbnb', null],
+      default: null
+    },
+    dietary: {
+      type: String,
+      default: null
+    },
+    interests: [{
+      type: String
+    }]
   },
   guideDetails: {
     firstName: String,
@@ -77,6 +147,10 @@ const userSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now },
     expiresAt: Date
   }],
+  deletedAt: {
+    type: Date,
+    default: null
+  },
   createdAt: {
     type: Date,
     default: Date.now

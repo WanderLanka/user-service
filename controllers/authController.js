@@ -130,10 +130,14 @@ const refreshToken = async (req, res) => {
 
 // Profile endpoint - unified for web and mobile
 const getProfile = async (req, res) => {
+  console.log('📋 getProfile controller called');
+  console.log('📋 User from token:', req.user);
   try {
     const result = await AuthService.getProfile(req);
+    console.log('✅ Profile retrieved successfully');
     return responseHelper.sendResponse(req, res, result.data, result.message, result.statusCode);
   } catch (err) {
+    console.error('❌ Profile error:', err.message);
     return responseHelper.sendError(req, res, err.message, 'Profile not found', err.statusCode || 404);
   }
 };
