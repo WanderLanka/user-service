@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const authLimiter = require('../middleware/rateLimiter');
-const { validateSignup, validateLogin } = require('../validators/authValidators');
+const { validateSignup, validateLogin, validateForgotPassword, validateVerifyOTP, validateResetPassword } = require('../validators/authValidators');
 const { verifyUnifiedToken } = require('../middleware/auth');
 const authController = require('../controllers/authController');
 const multer = require('multer');
@@ -41,7 +41,13 @@ router.post('/api/auth/guide-registration', authLimiter, (req, res, next) => {
   next();
 }, authController.register);
 
-// Maintenance endpoint
+// Forgot password endpoints
+router.post('/forgot-password', authLimiter, validateForgotPassword, authController.forgotPassword);
+router.post('/verify-reset-otp', authLimiter, validateVerifyOTP, authController.verifyResetOTP);
+router.post('/reset-password', authLimiter, validateResetPassword, authController.resetPassword);
+
+// Maintenance endpoints
 router.post('/cleanup-tokens', authController.cleanupTokens);
+router.post('/cleanup-expired-otps', authController.cleanupExpiredOTPs);
 
 module.exports = router;

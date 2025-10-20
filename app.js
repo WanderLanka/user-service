@@ -4,6 +4,7 @@ const path = require('path');
 const config = require('./config');
 const { logger } = require('./utils');
 const authRoutes = require('./routes/authRoutes');
+const authController = require('./controllers/authController');
 
 const app = express();
 
@@ -26,6 +27,10 @@ app.use((req, res, next) => {
 });
 
 // Routes Handling
+// Health at root for compatibility with existing logs
+app.get('/health', authController.healthCheck);
+// Mount auth routes under both /api/auth and / to support gateway forwarding and direct calls
+app.use('/api/auth', authRoutes);
 app.use('/', authRoutes);
 
 // Global error handler
