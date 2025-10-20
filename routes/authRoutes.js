@@ -19,6 +19,10 @@ router.post('/redirect', authLimiter, upload.single('document'), validateSignup,
 router.post('/login', authLimiter, validateLogin, authController.login);
 router.post('/logout', authController.logout);
 router.post('/refresh', authController.refreshToken);
+router.get('/profile-test', (req, res) => {
+  console.log('🧪 Test route hit!');
+  res.json({ message: 'Test route works!' });
+});
 router.get('/profile', verifyUnifiedToken, authController.getProfile);
 router.get('/verify-token', verifyUnifiedToken, authController.verifyToken);
 // Admin: fetch access requests (GET used by frontend admin panel)

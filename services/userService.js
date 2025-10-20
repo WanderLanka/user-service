@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const Tempuser =require('../models/Tempuser');
 const TokenService = require('./tokenService');
+const mongoose = require('mongoose');
 
 class UserService {
   static async findByCredentials(identifier) {
@@ -87,7 +88,21 @@ class UserService {
   }
 
   static async getUserProfile(userId) {
-    return await User.findById(userId).select('-password -refreshTokens');
+    console.log('🔍 Looking up user profile for userId:', userId);
+    console.log('🔍 UserId type:', typeof userId);
+    
+    // Convert string to ObjectId if needed
+    const objectId = mongoose.Types.ObjectId.isValid(userId) 
+      ? new mongoose.Types.ObjectId(userId) 
+      : userId;
+    
+    console.log('🔍 Converted to ObjectId:', objectId);
+    const user = await User.findById(objectId).select('-password -refreshTokens');
+    console.log('🔍 User found:', !!user);
+    if (user) {
+      console.log('✅ User details:', { id: user._id, username: user.username, role: user.role });
+    }
+    return user;
   }
 
   static async updateUserById(userId, update) {

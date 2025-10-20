@@ -40,9 +40,12 @@ const verifyMobileToken = (req, res, next) => {
 
 // Unified token verification middleware that detects platform
 const verifyUnifiedToken = (req, res, next) => {
+  console.log('🔐 verifyUnifiedToken middleware called for:', req.method, req.path);
   const token = req.header('Authorization')?.replace('Bearer ', '');
+  console.log('🔑 Token present:', !!token);
   if (!token) {
     const platform = req.headers['x-platform'] || 'web';
+    console.log('❌ No token, returning 401 for platform:', platform);
     if (platform === 'mobile') {
       return res.status(401).json({ 
         success: false,
@@ -63,13 +66,13 @@ const verifyUnifiedToken = (req, res, next) => {
     const platform = req.headers['x-platform'] || 'web';
     
     if (platform === 'mobile') {
-      res.status(401).json({ 
+      return res.status(401).json({ 
         success: false,
         message: 'Invalid token',
         error: 'Token verification failed'
       });
     } else {
-      res.status(400).json({ error: 'Invalid token' });
+      return res.status(400).json({ error: 'Invalid token' });
     }
   }
 };
