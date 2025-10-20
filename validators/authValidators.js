@@ -15,6 +15,14 @@ const validateSignup = [
     .withMessage('Password must be at least 6 characters')
     .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
     .withMessage('Password must contain at least one uppercase letter, one lowercase letter, and one number'),
+  // Optional phone number
+  body('phone')
+    .optional()
+    .isString()
+    .isLength({ min: 7, max: 20 })
+    .withMessage('Phone number must be between 7 and 20 characters')
+    .matches(/^[+\d][\d\s-]*$/)
+    .withMessage('Phone number can contain digits, spaces, dashes and can start with +'),
   body('role')
     .customSanitizer((value) => {
       if (!value) return value;

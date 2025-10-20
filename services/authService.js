@@ -78,6 +78,7 @@ class AuthService {
       username: req.body.username,
       email: req.body.email,
       password: req.body.password,
+      phone: req.body.phone || null,
       role,
       platform,
       status,
@@ -417,6 +418,7 @@ class AuthService {
           bio: user.guideDetails?.bio || '',
           languages: user.guideDetails?.languages || [],
           avatar: user.avatar || null,
+          phone: user.phone || null,
         },
         featured: false, // New guides are not featured by default
       };
