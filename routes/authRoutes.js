@@ -46,6 +46,9 @@ router.post('/forgot-password', authLimiter, validateForgotPassword, authControl
 router.post('/verify-reset-otp', authLimiter, validateVerifyOTP, authController.verifyResetOTP);
 router.post('/reset-password', authLimiter, validateResetPassword, authController.resetPassword);
 
+// Get user details by ID (for guides to view traveler information)
+router.get('/users/:userId', verifyUnifiedToken, authController.getUserById);
+
 // Maintenance endpoints
 router.post('/cleanup-tokens', authController.cleanupTokens);
 router.post('/cleanup-expired-otps', authController.cleanupExpiredOTPs);
