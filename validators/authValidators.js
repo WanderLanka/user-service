@@ -15,8 +15,25 @@ const validateSignup = [
     .withMessage('Password must be at least 6 characters')
     .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
     .withMessage('Password must contain at least one uppercase letter, one lowercase letter, and one number'),
+  // Optional phone number
+  body('phone')
+    .optional()
+    .isString()
+    .isLength({ min: 7, max: 20 })
+    .withMessage('Phone number must be between 7 and 20 characters')
+    .matches(/^[+\d][\d\s-]*$/)
+    .withMessage('Phone number can contain digits, spaces, dashes and can start with +'),
   body('role')
-    .isIn(['traveler', 'transport', 'accommodation', 'guide'])  /////// Traveler instead of Tourist
+    .customSanitizer((value) => {
+      if (!value) return value;
+      const normalized = String(value).toLowerCase().trim();
+      const aliasToCanonical = {
+        tourist: 'traveler',
+        traveller: 'traveler',
+      };
+      return aliasToCanonical[normalized] || normalized;
+    })
+    .isIn(['traveler', 'transport', 'accommodation', 'guide'])
     .withMessage('Invalid role selected')
 ];
 
@@ -33,4 +50,46 @@ const validateLogin = [
     .withMessage('Password is required')
 ];
 
-module.exports = { validateSignup, validateLogin };
+const validateForgotPassword = [
+  body('email')
+    .isEmail()
+    .withMessage('Please enter a valid email address')
+    .normalizeEmail()
+];
+
+const validateVerifyOTP = [
+  body('email')
+    .isEmail()
+    .withMessage('Please enter a valid email address')
+    .normalizeEmail(),
+  body('otp')
+    .isLength({ min: 6, max: 6 })
+    .withMessage('OTP must be exactly 6 digits')
+    .isNumeric()
+    .withMessage('OTP must contain only numbers')
+];
+
+const validateResetPassword = [
+  body('email')
+    .isEmail()
+    .withMessage('Please enter a valid email address')
+    .normalizeEmail(),
+  body('otp')
+    .isLength({ min: 6, max: 6 })
+    .withMessage('OTP must be exactly 6 digits')
+    .isNumeric()
+    .withMessage('OTP must contain only numbers'),
+  body('newPassword')
+    .isLength({ min: 8 })
+    .withMessage('Password must be at least 8 characters')
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*(),.?":{}|<>])/)
+    .withMessage('Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character')
+];
+
+module.exports = { 
+  validateSignup, 
+  validateLogin, 
+  validateForgotPassword, 
+  validateVerifyOTP, 
+  validateResetPassword 
+};

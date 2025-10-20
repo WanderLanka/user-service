@@ -1,4 +1,5 @@
 const AuthService = require('../services/authService');
+const ForgotPasswordService = require('../services/forgotPasswordService');
 const User = require('../models/User');
 const Tempuser = require('../models/Tempuser');
 const fs = require('fs');
@@ -173,6 +174,69 @@ const updateRequestStatus = async (req, res) => {
   }
 };
 
+// Forgot password endpoints
+const forgotPassword = async (req, res) => {
+  try {
+    const result = await ForgotPasswordService.requestPasswordReset(req);
+    return responseHelper.sendResponse(req, res, result.data, result.message, result.statusCode);
+  } catch (err) {
+    return responseHelper.sendError(req, res, err.message, 'Password reset request failed', err.statusCode || 400);
+  }
+};
+
+const verifyResetOTP = async (req, res) => {
+  try {
+    const result = await ForgotPasswordService.verifyPasswordResetOTP(req);
+    return responseHelper.sendResponse(req, res, result.data, result.message, result.statusCode);
+  } catch (err) {
+    return responseHelper.sendError(req, res, err.message, 'OTP verification failed', err.statusCode || 400);
+  }
+};
+
+const resetPassword = async (req, res) => {
+  try {
+    const result = await ForgotPasswordService.resetPassword(req);
+    return responseHelper.sendResponse(req, res, result.data, result.message, result.statusCode);
+  } catch (err) {
+    return responseHelper.sendError(req, res, err.message, 'Password reset failed', err.statusCode || 400);
+  }
+};
+
+// Cleanup expired OTPs - maintenance endpoint
+const cleanupExpiredOTPs = async (req, res) => {
+  try {
+    const result = await ForgotPasswordService.cleanupExpiredOTPs();
+    return responseHelper.sendResponse(req, res, result, 'Expired OTPs cleaned up successfully', 200);
+  } catch (err) {
+    return responseHelper.sendError(req, res, err.message, 'OTP cleanup failed', err.statusCode || 500);
+  }
+};
+
+// Get user by ID endpoint - allows authenticated users to view other user profiles
+const getUserById = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    if (!userId) {
+      return responseHelper.sendError(req, res, 'User ID is required', 'Invalid Request', 400);
+    }
+    
+    const UserService = require('../services/userService');
+    const user = await UserService.getUserProfile(userId);
+    
+    if (!user) {
+      return responseHelper.sendError(req, res, 'User not found', 'Not Found', 404);
+    }
+    
+    const userData = UserService.formatUserResponse(user);
+    
+    return responseHelper.sendResponse(req, res, { user: userData }, 'User details retrieved successfully', 200);
+  } catch (err) {
+    console.error('Error fetching user by ID:', err);
+    return responseHelper.sendError(req, res, err.message, 'Failed to fetch user details', err.statusCode || 500);
+  }
+};
+
 module.exports = {
   healthCheck,
   register,
@@ -182,8 +246,13 @@ module.exports = {
   refreshToken,
   getProfile,
   verifyToken,
+  getUserById,
   cleanupTokens,
   updateRequestStatus,
   requests,
-  getRequestDocument
+  getRequestDocument,
+  forgotPassword,
+  verifyResetOTP,
+  resetPassword,
+  cleanupExpiredOTPs
 };
