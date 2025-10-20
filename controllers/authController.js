@@ -208,6 +208,31 @@ const cleanupExpiredOTPs = async (req, res) => {
   }
 };
 
+// Get user by ID endpoint - allows authenticated users to view other user profiles
+const getUserById = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    if (!userId) {
+      return responseHelper.sendError(req, res, 'User ID is required', 'Invalid Request', 400);
+    }
+    
+    const UserService = require('../services/userService');
+    const user = await UserService.getUserProfile(userId);
+    
+    if (!user) {
+      return responseHelper.sendError(req, res, 'User not found', 'Not Found', 404);
+    }
+    
+    const userData = UserService.formatUserResponse(user);
+    
+    return responseHelper.sendResponse(req, res, { user: userData }, 'User details retrieved successfully', 200);
+  } catch (err) {
+    console.error('Error fetching user by ID:', err);
+    return responseHelper.sendError(req, res, err.message, 'Failed to fetch user details', err.statusCode || 500);
+  }
+};
+
 module.exports = {
   healthCheck,
   register,
@@ -217,6 +242,7 @@ module.exports = {
   refreshToken,
   getProfile,
   verifyToken,
+  getUserById,
   cleanupTokens,
   updateRequestStatus,
   requests,
