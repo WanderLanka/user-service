@@ -1,2 +1,6 @@
 node_modules
 .env
+
+# Generated dependency copies and operating-system metadata
+node_modules*/
+.DS_Store
