@@ -29,7 +29,7 @@ const userSchema = new mongoose.Schema({
   role: {
     type: String,
     required: true,
-    enum: ['traveler', 'traveller', 'transport', 'accommodation', 'guide'],   //// Change the tourist to traveler here
+    enum: ['traveler', 'traveller', 'transport', 'accommodation', 'guide', 'Sysadmin', 'admin'],   //// Change the tourist to traveler here
     default: 'traveler'
   },
   status: {

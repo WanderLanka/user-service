@@ -3,6 +3,10 @@ const router = express.Router();
 const authLimiter = require('../middleware/rateLimiter');
 const { validateSignup, validateLogin, validateForgotPassword, validateVerifyOTP, validateResetPassword } = require('../validators/authValidators');
 const { verifyUnifiedToken } = require('../middleware/auth');
+const requireAdmin = (req, res, next) => {
+  if (!['admin', 'Sysadmin'].includes(req.user?.role)) return res.status(403).json({ error: 'Administrator access required' });
+  return next();
+};
 const authController = require('../controllers/authController');
 const multer = require('multer');
 
@@ -26,12 +30,12 @@ router.get('/profile-test', (req, res) => {
 router.get('/profile', verifyUnifiedToken, authController.getProfile);
 router.get('/verify-token', verifyUnifiedToken, authController.verifyToken);
 // Admin: fetch access requests (GET used by frontend admin panel)
-router.get('/requests', authController.requests);
+router.get('/requests', verifyUnifiedToken, requireAdmin, authController.requests);
 // Also keep POST /requests for backward compatibility
-router.put('/updateRequestStatus', authController.updateRequestStatus);
+router.put('/updateRequestStatus', verifyUnifiedToken, requireAdmin, authController.updateRequestStatus);
 
 // Serve a specific request's document (streams PDF/binary)
-router.get('/requests/:id/document', authController.getRequestDocument);
+router.get('/requests/:id/document', verifyUnifiedToken, requireAdmin, authController.getRequestDocument);
 
 // Legacy guide registration endpoint (mobile) - maps to register with platform override
 router.post('/api/auth/guide-registration', authLimiter, (req, res, next) => {
@@ -54,7 +58,7 @@ router.post('/reset-password', authLimiter, validateResetPassword, authControlle
 router.get('/users/:userId', verifyUnifiedToken, authController.getUserById);
 
 // Maintenance endpoints
-router.post('/cleanup-tokens', authController.cleanupTokens);
-router.post('/cleanup-expired-otps', authController.cleanupExpiredOTPs);
+router.post('/cleanup-tokens', verifyUnifiedToken, requireAdmin, authController.cleanupTokens);
+router.post('/cleanup-expired-otps', verifyUnifiedToken, requireAdmin, authController.cleanupExpiredOTPs);
 
 module.exports = router;

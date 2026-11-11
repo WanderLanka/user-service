@@ -157,7 +157,7 @@ POST /api/auth/cleanup-tokens - Cleanup expired refresh tokens
 
 ```bash
 # Preferred (dedicated user DB)
-USER_MONGO_URI="mongodb+srv://username:password@cluster.mongodb.net/?retryWrites=true&w=majority"
+USER_MONGO_URI="mongodb://127.0.0.1:27017/wanderlanka_user"
 USER_DB_NAME="wanderlanka_user"
 
 # Backward compatible fallback

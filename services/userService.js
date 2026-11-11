@@ -21,7 +21,7 @@ class UserService {
 
   static async createUser(userData) {
     const hashedPassword = await TokenService.hashPassword(userData.password);
-    
+
     const user = new User({
       ...userData,
       password: hashedPassword
@@ -30,19 +30,19 @@ class UserService {
     return await user.save();
   }
 
-  
+
   static async createTempUser(tempUserData) {
-    const hashedPassword = await TokenService.hashPassword(tempUserData.password);  
+    const hashedPassword = await TokenService.hashPassword(tempUserData.password);
     const tempUser = new Tempuser({
       ...tempUserData,
       password: hashedPassword
-    });   
+    });
     return await tempUser.save();
   }
 
   static async addRefreshToken(userId, refreshToken) {
     const refreshTokenExpiry = TokenService.generateRefreshTokenExpiry();
-    
+
     return await User.updateOne(
       { _id: userId },
       {
@@ -65,7 +65,7 @@ class UserService {
 
   static async findValidRefreshToken(userId, refreshToken) {
     const user = await User.findById(userId);
-    if (!user) return null;
+    if (!user || !user.isActive || ['suspended', 'deleted', 'rejected'].includes(user.status)) return null;
 
     const tokenExists = user.refreshTokens.some(
       tokenObj => tokenObj.token === refreshToken && tokenObj.expiresAt > new Date()
@@ -90,12 +90,12 @@ class UserService {
   static async getUserProfile(userId) {
     console.log('🔍 Looking up user profile for userId:', userId);
     console.log('🔍 UserId type:', typeof userId);
-    
+
     // Convert string to ObjectId if needed
-    const objectId = mongoose.Types.ObjectId.isValid(userId) 
-      ? new mongoose.Types.ObjectId(userId) 
+    const objectId = mongoose.Types.ObjectId.isValid(userId)
+      ? new mongoose.Types.ObjectId(userId)
       : userId;
-    
+
     console.log('🔍 Converted to ObjectId:', objectId);
     const user = await User.findById(objectId).select('-password -refreshTokens');
     console.log('🔍 User found:', !!user);
@@ -122,7 +122,7 @@ class UserService {
       };
       await fetch(`${GUIDE_URL}/guide/insert`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-internal-token': process.env.INTERNAL_SERVICE_TOKEN || '' },
         body: JSON.stringify(payload),
       });
     } catch (e) {

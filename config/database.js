@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 // Prefer dedicated user-service DB settings with sensible fallbacks
-const uriFromEnv = process.env.USER_MONGO_URI || process.env.MONGO_URI || 'mongodb+srv://abdulraheempsn:0769634145aB@cluster0.xuwqh3p.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
+const uriFromEnv = process.env.USER_MONGO_URI || process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/wanderlanka_user';
 const dbName = process.env.USER_DB_NAME || 'wanderlanka_user';
 
 const databaseConfig = {

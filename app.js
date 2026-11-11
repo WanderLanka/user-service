@@ -8,6 +8,7 @@ const profileRoutes = require('./routes/profileRoutes');
 const authController = require('./controllers/authController');
 
 const app = express();
+require('./runtime').installReadiness(app);
 
 // Middleware
 app.use(cors({
@@ -18,7 +19,7 @@ app.use(cors({
 app.use(express.json());
 
 // Serve uploaded documents statically (e.g., /uploads/docs/<file>)
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+// Provider identity documents are streamed only through the protected admin route.
 
 // Request logging middleware
 app.use((req, res, next) => {

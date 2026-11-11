@@ -4,7 +4,7 @@ const { validationResult } = require('express-validator');
 const { platformHelper, logger } = require('../utils');
 
 class AuthService {
-    
+
   static validateRequest(req) {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -37,7 +37,7 @@ class AuthService {
     let status = 'active';
 
     if (platform === 'web') {
-      const validWebRoles = ['traveler', 'transport', 'accommodation', 'Sysadmin'];  // Web: all EXCEPT guide
+      const validWebRoles = ['traveler', 'transport', 'accommodation'];  // Web: all EXCEPT guide
       if (!validWebRoles.includes(role)) {
         const error = new Error('Invalid role for web application');
         error.statusCode = 400;
@@ -104,12 +104,12 @@ class AuthService {
     // Registration only returns user data, no tokens
     // Users must login separately to get tokens
     const userData = UserService.formatUserResponse(newUser, false);
-    
+
     // Return structured response based on user role and status
-    const message = (newUser.role === 'guide' && newUser.status === 'pending') 
-      ? 'Guide registration submitted successfully. Your application will be reviewed by admin.' 
+    const message = (newUser.role === 'guide' && newUser.status === 'pending')
+      ? 'Guide registration submitted successfully. Your application will be reviewed by admin.'
       : 'User registered successfully. Please login to access your account.';
-    
+
     return {
       data: userData,
       message,
@@ -138,7 +138,7 @@ class AuthService {
   // Determine role and status based on platform and role
   let role = req.body.role;
   let status = 'active';
-  
+
   // FIX: Get document from uploaded file, not req.body
   let document = null;
   if (req.file) {
@@ -150,25 +150,25 @@ class AuthService {
   }
 
   if (platform === 'web') {
-    const validWebRoles = ['traveler', 'transport', 'accommodation', 'Sysadmin'];
+    const validWebRoles = ['traveler', 'transport', 'accommodation'];
     if (!validWebRoles.includes(role)) {
       const error = new Error('Invalid role for web application');
       error.statusCode = 400;
       throw error;
     }
-    
+
     // Validate document requirement for transport and accommodation
     if ((role === 'transport' || role === 'accommodation') && !document) {
       const error = new Error('Document is required for transport and accommodation roles');
       error.statusCode = 400;
       throw error;
     }
-    
+
     // Set status to pending for roles requiring approval
     if (role === 'transport' || role === 'accommodation') {
       status = 'pending';
     }
-    
+
   } else if (platform === 'mobile') {
     const validMobileRoles = ['traveler', 'guide'];
     if (!validMobileRoles.includes(role)) {
@@ -176,10 +176,10 @@ class AuthService {
       error.statusCode = 400;
       throw error;
     }
-    
+
     // For mobile, map traveler to traveller in database
     if (role === 'traveler') role = 'traveller';
-    
+
     // Guides need admin approval
     if (role === 'guide') status = 'pending';
   }
@@ -197,19 +197,19 @@ class AuthService {
     emailVerified: false,
   });
 
-  console.log('New user created with document:', newUser);
+
 
   // Log success
   logger.authSuccess('Registration', platform, req.body.username);
 
   // Registration only returns user data, no tokens
   const userData = UserService.formatUserResponse(newUser, false);
-  
+
   // Return structured response based on user role and status
-  const message = ((newUser.role === 'guide' || newUser.role === 'transport' || newUser.role === 'accommodation') && newUser.status === 'pending') 
-    ? 'Registration submitted successfully. Your application will be reviewed by admin.' 
+  const message = ((newUser.role === 'guide' || newUser.role === 'transport' || newUser.role === 'accommodation') && newUser.status === 'pending')
+    ? 'Registration submitted successfully. Your application will be reviewed by admin.'
     : 'User registered successfully. Please login to access your account.';
-  
+
   return {
     data: userData,
     message,
@@ -223,10 +223,10 @@ class AuthService {
 
     // Detect platform
     const platform = platformHelper.detectPlatform(req);
-    
+
     // Handle both identifier (mobile) and username (web) formats
     const identifier = req.body.identifier || req.body.username;
-    
+
     // Log attempt
     logger.auth('Login', platform, identifier);
 
@@ -239,7 +239,7 @@ class AuthService {
     }
 
     // Platform-specific role validation
-    if (platform === 'web' && !['traveler', 'transport', 'accommodation', 'Sysadmin'].includes(user.role)) {
+    if (platform === 'web' && !['traveler', 'transport', 'accommodation', 'Sysadmin', 'admin'].includes(user.role)) {
       const error = new Error('Invalid credentials');
       error.statusCode = 401;
       throw error;
@@ -284,7 +284,7 @@ class AuthService {
     logger.authSuccess('Login', platform, identifier);
 
     const userData = UserService.formatUserResponse(user, true, tokens);
-    
+
     return {
       data: userData,
       message: 'Login successful',
@@ -294,11 +294,11 @@ class AuthService {
 
   static async logout(req) {
     const refreshToken = req.body.refreshToken;
-    
+
     if (refreshToken) {
       await UserService.removeRefreshToken(refreshToken);
     }
-    
+
     return {
       data: {},
       message: 'Logged out successfully',
@@ -308,7 +308,7 @@ class AuthService {
 
   static async refreshToken(req) {
     const refreshToken = req.body.refreshToken;
-    
+
     if (!refreshToken) {
       const error = new Error('No refresh token provided');
       error.statusCode = 400;
@@ -319,6 +319,7 @@ class AuthService {
     let decoded;
     try {
       decoded = TokenService.verifyToken(refreshToken);
+      if (decoded.type !== 'refresh') throw new Error('Refresh token required');
     } catch (err) {
       const error = new Error('Token verification failed');
       error.statusCode = 401;
@@ -339,7 +340,7 @@ class AuthService {
     await UserService.removeRefreshToken(refreshToken);
 
     const userData = UserService.formatUserResponse(user, true, tokens);
-    
+
     return {
       data: userData,
       message: 'Token refreshed successfully',
@@ -348,16 +349,16 @@ class AuthService {
   }
   static async getProfile(req) {
     const userId = req.user.userId;
-    
+
     const user = await UserService.getUserProfile(userId);
     if (!user) {
       const error = new Error('Profile not found');
       error.statusCode = 404;
       throw error;
     }
-    
+
     const userData = UserService.formatUserResponse(user);
-    
+
     return {
       data: { user: userData },
       message: 'Profile retrieved successfully',
@@ -375,7 +376,7 @@ class AuthService {
         platform: req.user.platform
       }
     };
-    
+
     return {
       data: userData,
       message: 'Token is valid',
@@ -385,7 +386,7 @@ class AuthService {
 
   static async cleanupExpiredTokens(req) {
     const result = await UserService.cleanupExpiredTokens();
-    
+
     return {
       data: { modifiedCount: result.modifiedCount },
       message: 'Token cleanup completed',
@@ -406,7 +407,7 @@ class AuthService {
 
       const GUIDE_SERVICE_URL = process.env.GUIDE_SERVICE_URL || 'http://localhost:3005';
       const guideServiceEndpoint = `${GUIDE_SERVICE_URL}/guide/insert`;
-      
+
       // Prepare payload for guide-service
       const payload = {
         userId: user._id.toString(),
@@ -433,7 +434,7 @@ class AuthService {
       const response = await fetch(guideServiceEndpoint, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json', 'x-internal-token': process.env.INTERNAL_SERVICE_TOKEN || '',
         },
         body: JSON.stringify(payload),
       });
@@ -445,7 +446,7 @@ class AuthService {
 
       const result = await response.json();
       console.log('✅ Guide successfully synced to guide-service:', result);
-      
+
       return result;
     } catch (error) {
       console.error('❌ Error syncing guide to guide-service:', error.message);

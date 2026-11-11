@@ -1,3 +1,4 @@
+const { randomUUID } = require('node:crypto');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const config = require('../config');
@@ -12,14 +13,14 @@ class TokenService {
       platform
     };
 
-    const accessToken = jwt.sign(payload, config.jwtSecret, { 
-      expiresIn: config.accessTokenExpiry 
+    const accessToken = jwt.sign(payload, config.jwtSecret, {
+      jwtid: randomUUID(), expiresIn: config.accessTokenExpiry
     });
 
     const refreshToken = jwt.sign(
-      { userId: user._id, type: 'refresh', platform }, 
-      config.jwtSecret, 
-      { expiresIn: config.refreshTokenExpiry }
+      { userId: user._id, type: 'refresh', platform },
+      config.jwtSecret,
+      { jwtid: randomUUID(), expiresIn: config.refreshTokenExpiry }
     );
 
     return { accessToken, refreshToken };
@@ -34,7 +35,7 @@ class TokenService {
   }
 
   static verifyToken(token) {
-    return jwt.verify(token, config.jwtSecret);
+    return jwt.verify(token, config.jwtSecret, { algorithms: ['HS256'] });
   }
 
   static generateRefreshTokenExpiry() {

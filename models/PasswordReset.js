@@ -60,8 +60,9 @@ passwordResetSchema.statics.markAsUsed = function(email, otp) {
 // Static method to increment attempts
 passwordResetSchema.statics.incrementAttempts = function(email, otp) {
   return this.updateOne(
-    { email: email.toLowerCase(), otp },
-    { $inc: { attempts: 1 } }
+    { email: email.toLowerCase(), isUsed: false, expiresAt: { $gt: new Date() }, attempts: { $lt: 3 } },
+    { $inc: { attempts: 1 } },
+    { sort: { createdAt: -1 } }
   );
 };
 

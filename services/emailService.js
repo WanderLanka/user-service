@@ -8,31 +8,11 @@ class EmailService {
   }
 
   initializeTransporter() {
-    try {
-      // For development, use Gmail SMTP
-      // In production, you should use a proper email service like SendGrid, AWS SES, etc.
-      this.transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: process.env.EMAIL_USER || 'wanderlanka2025@gmail.com',
-          pass: process.env.EMAIL_PASS || 'eohe oaxf sizj xoam' // Use App Password for Gmail
-        }
-      });
-
-      // Verify transporter configuration
-      this.transporter.verify((error, success) => {
-        if (error) {
-          console.error('❌ Email service configuration error:', error.message);
-          logger.error('Email service failed to initialize', error);
-        } else {
-          console.log('✅ Email service ready to send emails');
-          logger.info('Email service initialized successfully');
-        }
-      });
-    } catch (error) {
-      console.error('❌ Failed to initialize email service:', error);
-      logger.error('Email service initialization failed', error);
-    }
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) return;
+    this.transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+    });
   }
 
   async sendPasswordResetEmail(email, otp, username = 'User') {
@@ -41,12 +21,12 @@ class EmailService {
         throw new Error('Email service not initialized');
       }
 
-      // Email credentials are now hardcoded, so we can proceed
+      // SMTP credentials are supplied by the deployment environment.
 
       const mailOptions = {
         from: {
           name: 'WanderLanka',
-          address: process.env.EMAIL_USER || 'wanderlanka2025@gmail.com'
+          address: process.env.EMAIL_USER
         },
         to: email,
         subject: 'Reset Your WanderLanka Password',
@@ -57,7 +37,7 @@ class EmailService {
       const result = await this.transporter.sendMail(mailOptions);
       console.log('✅ Password reset email sent successfully:', result.messageId);
       logger.info('Password reset email sent', { email, messageId: result.messageId });
-      
+
       return {
         success: true,
         messageId: result.messageId
@@ -150,17 +130,17 @@ class EmailService {
             <div class="logo">🌴 WanderLanka</div>
             <h1>Reset Your Password</h1>
           </div>
-          
+
           <p>Hi ${username},</p>
-          
+
           <p>You requested to reset your password for your WanderLanka account. Use the verification code below to reset your password:</p>
-          
+
           <div class="otp-container">
             <p><strong>Your verification code:</strong></p>
             <div class="otp-code">${otp}</div>
             <p><small>This code will expire in 15 minutes</small></p>
           </div>
-          
+
           <div class="warning">
             <strong>⚠️ Security Notice:</strong>
             <ul>
@@ -170,10 +150,10 @@ class EmailService {
               <li>Never share this code with anyone</li>
             </ul>
           </div>
-          
+
           <p>If you're having trouble with the code, you can also use the deep link below:</p>
           <p><a href="wanderlankawebapp://reset-password?email=${encodeURIComponent(email)}&otp=${otp}" class="button">Reset Password</a></p>
-          
+
           <div class="footer">
             <p>This email was sent by WanderLanka</p>
             <p>If you didn't request this password reset, please contact our support team.</p>
@@ -219,7 +199,7 @@ If you didn't request this password reset, please contact our support team.
         throw new Error('Email service not initialized');
       }
 
-      // Email credentials are now hardcoded, so we can proceed
+      // SMTP credentials are supplied by the deployment environment.
 
       const mailOptions = {
         from: {
@@ -235,7 +215,7 @@ If you didn't request this password reset, please contact our support team.
       const result = await this.transporter.sendMail(mailOptions);
       console.log('✅ Password reset success email sent:', result.messageId);
       logger.info('Password reset success email sent', { email, messageId: result.messageId });
-      
+
       return {
         success: true,
         messageId: result.messageId
@@ -310,17 +290,17 @@ If you didn't request this password reset, please contact our support team.
             <div class="logo">🌴 WanderLanka</div>
             <h1>Password Reset Successful</h1>
           </div>
-          
+
           <p>Hi ${username},</p>
-          
+
           <div class="success">
             <div class="success-icon">✅</div>
             <h2>Your password has been successfully reset!</h2>
             <p>You can now log in to your WanderLanka account using your new password.</p>
           </div>
-          
+
           <p>If you didn't make this change, please contact our support team immediately as your account may have been compromised.</p>
-          
+
           <div class="footer">
             <p>This email was sent by WanderLanka</p>
             <p>© 2024 WanderLanka. All rights reserved.</p>

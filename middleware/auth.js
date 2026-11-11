@@ -1,3 +1,4 @@
+const { verifyAccess } = require('../security');
 const TokenService = require('../services/tokenService');
 
 const verifyToken = (req, res, next) => {
@@ -6,7 +7,7 @@ const verifyToken = (req, res, next) => {
     return res.status(401).json({ error: 'Access denied. No token provided.' });
   }
   try {
-    const decoded = TokenService.verifyToken(token);
+    const decoded = verifyAccess(token, require('../config').jwtSecret);
     req.user = decoded;
     next();
   } catch (err) {
@@ -18,19 +19,19 @@ const verifyToken = (req, res, next) => {
 const verifyMobileToken = (req, res, next) => {
   const token = req.header('Authorization')?.replace('Bearer ', '');
   if (!token) {
-    return res.status(401).json({ 
+    return res.status(401).json({
       success: false,
       message: 'Access denied',
       error: 'No token provided'
     });
   }
   try {
-    const decoded = TokenService.verifyToken(token);
+    const decoded = verifyAccess(token, require('../config').jwtSecret);
     req.user = decoded;
     next();
   } catch (err) {
     console.error('Mobile token verification error:', err);
-    res.status(401).json({ 
+    res.status(401).json({
       success: false,
       message: 'Invalid token',
       error: 'Token verification failed'
@@ -47,7 +48,7 @@ const verifyUnifiedToken = (req, res, next) => {
     const platform = req.headers['x-platform'] || 'web';
     console.log('❌ No token, returning 401 for platform:', platform);
     if (platform === 'mobile') {
-      return res.status(401).json({ 
+      return res.status(401).json({
         success: false,
         message: 'Access denied',
         error: 'No token provided'
@@ -56,17 +57,17 @@ const verifyUnifiedToken = (req, res, next) => {
       return res.status(401).json({ error: 'Access denied. No token provided.' });
     }
   }
-  
+
   try {
-    const decoded = TokenService.verifyToken(token);
+    const decoded = verifyAccess(token, require('../config').jwtSecret);
     req.user = decoded;
     next();
   } catch (err) {
     console.error('Token verification error:', err);
     const platform = req.headers['x-platform'] || 'web';
-    
+
     if (platform === 'mobile') {
-      return res.status(401).json({ 
+      return res.status(401).json({
         success: false,
         message: 'Invalid token',
         error: 'Token verification failed'

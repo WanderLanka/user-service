@@ -1,3 +1,4 @@
+const { randomInt } = require('node:crypto');
 const User = require('../models/User');
 const PasswordReset = require('../models/PasswordReset');
 const TokenService = require('./tokenService');
@@ -5,12 +6,12 @@ const EmailService = require('./emailService');
 const { logger } = require('../utils');
 
 class ForgotPasswordService {
-  
+
   /**
    * Generate a 6-digit OTP
    */
   static generateOTP() {
-    return Math.floor(100000 + Math.random() * 900000).toString();
+    return randomInt(100000, 1000000).toString();
   }
 
   /**
@@ -18,7 +19,7 @@ class ForgotPasswordService {
    */
   static async requestPasswordReset(req) {
     const { email } = req.body;
-    
+
     try {
       // Find user by email
       const user = await User.findOne({ email: email.toLowerCase() });
@@ -46,7 +47,9 @@ class ForgotPasswordService {
 
       // Generate OTP
       const otp = this.generateOTP();
-      
+
+      await PasswordReset.deleteMany({ email: email.toLowerCase(), isUsed: false });
+
       // Store OTP in database with expiration
       await PasswordReset.create({
         email: email.toLowerCase(),
@@ -83,15 +86,15 @@ class ForgotPasswordService {
    */
   static async verifyPasswordResetOTP(req) {
     const { email, otp } = req.body;
-    
+
     try {
       // Find valid OTP
       const passwordReset = await PasswordReset.findValidOTP(email.toLowerCase(), otp);
-      
+
       if (!passwordReset) {
         // Increment attempts for any existing record
         await PasswordReset.incrementAttempts(email.toLowerCase(), otp);
-        
+
         const error = new Error('Invalid or expired OTP. Please check your email and try again.');
         error.statusCode = 400;
         throw error;
@@ -99,7 +102,7 @@ class ForgotPasswordService {
 
       // OTP is valid - return success
       logger.info('Password reset OTP verified', { email });
-      
+
       return {
         data: {
           verified: true,
@@ -120,15 +123,15 @@ class ForgotPasswordService {
    */
   static async resetPassword(req) {
     const { email, otp, newPassword } = req.body;
-    
+
     try {
       // Find valid OTP
       const passwordReset = await PasswordReset.findValidOTP(email.toLowerCase(), otp);
-      
+
       if (!passwordReset) {
         // Increment attempts for any existing record
         await PasswordReset.incrementAttempts(email.toLowerCase(), otp);
-        
+
         const error = new Error('Invalid or expired OTP. Please request a new password reset.');
         error.statusCode = 400;
         throw error;
@@ -157,7 +160,7 @@ class ForgotPasswordService {
 
       // Hash new password
       const hashedPassword = await TokenService.hashPassword(newPassword);
-      
+
       // Update user password
       user.password = hashedPassword;
       user.updatedAt = new Date();
@@ -181,7 +184,7 @@ class ForgotPasswordService {
       }
 
       logger.info('Password reset completed', { email, userId: user._id });
-      
+
       return {
         data: {},
         message: 'Password reset successfully. Please log in with your new password.',
@@ -215,14 +218,14 @@ class ForgotPasswordService {
     try {
       const totalRequests = await PasswordReset.countDocuments();
       const usedOTPs = await PasswordReset.countDocuments({ isUsed: true });
-      const expiredOTPs = await PasswordReset.countDocuments({ 
+      const expiredOTPs = await PasswordReset.countDocuments({
         $or: [
           { expiresAt: { $lt: new Date() } },
           { attempts: { $gte: 3 } }
         ]
       });
-      const activeOTPs = await PasswordReset.countDocuments({ 
-        isUsed: false, 
+      const activeOTPs = await PasswordReset.countDocuments({
+        isUsed: false,
         expiresAt: { $gt: new Date() },
         attempts: { $lt: 3 }
       });
